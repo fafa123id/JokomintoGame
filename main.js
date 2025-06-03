@@ -10,11 +10,11 @@ import { GameMenu, bath, feed, tebakKata } from './src/routing.js';
 import { revealHint } from './src/Game/tebakKata.js';
 
 // Buat functions tersedia secara global untuk onclick handlers
-window.toGame = GameMenu;
-window.bath = bath;
-window.feed = feed;
-window.tebakKata = tebakKata;
-window.revealHint = revealHint;
-window.showMessage = showMessage;
+showMessage();
+GameMenu();
+bath();
+feed();
+tebakKata();
+revealHint();
 
 console.log('All modules loaded successfully!');
