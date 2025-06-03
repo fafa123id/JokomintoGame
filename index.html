@@ -1,14 +1,177 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    
+    <title>JokomintoGame - Virtual Pet</title>
+    <!-- Tambahkan Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fredoka+One:wght@400&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'ui-sans-serif', 'system-ui'],
+                        'game': ['Fredoka One', 'cursive'],
+                    },
+                    animation: {
+                        'bounce-slow': 'bounce 2s infinite',
+                        'pulse-slow': 'pulse 3s infinite',
+                        'wiggle': 'wiggle 1s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        wiggle: {
+                            '0%, 100%': { transform: 'rotate(-3deg)' },
+                            '50%': { transform: 'rotate(3deg)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-shadow {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+        }
+        .btn-hover {
+            transition: all 0.3s ease;
+        }
+        .btn-hover:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        .stat-bar {
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+    </style>
 </head>
-<body>
-    <h1>Welcome to My Page</h1>
-    <p>This is a simple HTML document.</p>
+
+<body class="font-sans gradient-bg min-h-screen">
+    <div class="min-h-screen h-full flex flex-col">
+        <!-- Status Bar dengan Glass Effect -->
+        <div class="stat-bar flex justify-center items-center space-x-6 p-4 m-4 rounded-2xl">
+            <div class="flex items-center space-x-2 bg-white/20 px-4 py-2 rounded-full">
+                <span class="text-2xl">😊</span>
+                <div>
+                    <p class="text-white font-semibold text-sm">Mood</p>
+                    <p class="text-white font-bold" id="mood"></p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2 bg-white/20 px-4 py-2 rounded-full">
+                <span class="text-2xl">🛁</span>
+                <div>
+                    <p class="text-white font-semibold text-sm">Hygiene</p>
+                    <p class="text-white font-bold" id="hygiene"></p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2 bg-white/20 px-4 py-2 rounded-full">
+                <span class="text-2xl">🍎</span>
+                <div>
+                    <p class="text-white font-semibold text-sm">Hunger</p>
+                    <p class="text-white font-bold" id="hunger"></p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2 bg-white/20 px-4 py-2 rounded-full">
+                <span class="text-2xl">🪙</span>
+                <div>
+                    <p class="text-white font-semibold text-sm">Coin</p>
+                    <p class="text-white font-bold" id="coin"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Message Container -->
+        <div id="message-container" class="flex justify-center items-center p-4 hidden">
+            <div class="bg-white/90 backdrop-blur-sm px-6 py-3 rounded-full card-shadow">
+                <h2 id="message" class="text-gray-800 font-semibold"></h2>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="mainScreen justify-center items-center flex-1 flex flex-col p-6">
+            <!-- Main Menu -->
+            <div id="optionButton" class="flex flex-col space-y-4 w-80">
+                <div class="text-center mb-8">
+                    <h1 class="font-game text-4xl text-white mb-2 animate-bounce-slow">🎮 JokomintoGame</h1>
+                    <p class="text-white/80 text-lg">Take care of your virtual pet!</p>
+                </div>
+                <button class="bg-gradient-to-r from-green-400 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover card-shadow" onclick="toGame()">
+                    <span class="text-2xl mr-2">🎯</span>Main Game
+                </button>
+                <button class="bg-gradient-to-r from-blue-400 to-blue-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover card-shadow" onclick="bath()">
+                    <span class="text-2xl mr-2">🛁</span>Mandi
+                </button>
+                <button class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover card-shadow" onclick="feed()">
+                    <span class="text-2xl mr-2">🍎</span>Makan
+                </button>
+            </div>
+
+            <!-- Game Menu -->
+            <div id="menuGame" class="flex flex-col space-y-4 w-80 hidden">
+                <div class="text-center mb-6">
+                    <h1 class="font-game text-3xl text-white mb-2">🎮 Pilih Game</h1>
+                </div>
+                <button class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover card-shadow" onclick="tebakKata()">
+                    <span class="text-2xl mr-2">🔤</span>Tebak Kata
+                </button>
+                <button class="bg-gradient-to-r from-red-500 to-red-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover card-shadow" onclick="window.location='/index.html'">
+                    <span class="text-2xl mr-2">🔙</span>Kembali
+                </button>
+            </div>
+
+            <!-- Tebak Kata Game -->
+            <div id="tebakKata" class="flex flex-col space-y-6 w-96 hidden">
+                <div class="bg-white/90 backdrop-blur-sm p-6 rounded-3xl card-shadow">
+                    <div class="text-center mb-6">
+                        <h1 class="font-game text-3xl text-gray-800 mb-2">🔤 Game Tebak Kata</h1>
+                        <p class="text-gray-600">Tebak kata berdasarkan petunjuk yang diberikan!</p>
+                    </div>
+                    
+                    <!-- Timer -->
+                    <div class="bg-gradient-to-r from-red-400 to-red-600 text-white p-3 rounded-2xl text-center mb-4">
+                        <p class="font-bold text-lg">⏰ Waktu: <span id="time" class="animate-pulse">5</span> detik</p>
+                    </div>
+                    
+                    <!-- Word Display -->
+                    <div class="bg-gray-100 p-4 rounded-2xl text-center mb-6">
+                        <p id="wordDisplay" class="text-2xl font-bold text-gray-800 tracking-widest">Loading...</p>
+                    </div>
+                    
+                    <!-- Input Form -->
+                    <form id="tebakKataForm" class="space-y-4">
+                        <input type="text" id="inputTebakKata" placeholder="Masukkan kata..." required 
+                               class="w-full p-4 rounded-2xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none text-lg font-semibold text-center">
+                        <button type="submit" class="w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover">
+                            <span class="text-xl mr-2">✅</span>Submit Jawaban
+                        </button>
+                    </form>
+                    
+                    <!-- Hint Button -->
+                    <button onclick="revealHint()" class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover">
+                        <span class="text-xl mr-2">💡</span>Hint (-20 Coin)
+                    </button>
+                    
+                    <!-- Back Button -->
+                    <button onclick="window.location='/index.html'" class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 rounded-2xl font-bold btn-hover mt-4">
+                        <span class="text-xl mr-2">🔙</span>Kembali ke Menu
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Load hanya index.js dan main.js sebagai module -->
     <script src="index.js"></script>
+    <script type="module" src="main.js"></script>
 </body>
+
 </html>
