@@ -12,5 +12,3 @@ function showMessage($message, $type = "error", $duration = 2000) { //message co
       document.getElementById("message-container").style.display = "none";
     }, $duration);
   }
-
-  export { showMessage };

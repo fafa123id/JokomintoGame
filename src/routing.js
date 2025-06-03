@@ -1,7 +1,3 @@
-import { showMessage } from "./components.js";
-import { playCondition, feedCondition } from "./condition.js";
-import { pageTebakKata } from "./Game/tebakKata.js";
-
 function GameMenu() {
   if (playCondition()) {
     document.getElementById("optionButton").style.display = "none";
@@ -44,4 +40,3 @@ function feed() {
   }
 }
 
-export { GameMenu, pageSelectGame, tebakKata, bath, feed };

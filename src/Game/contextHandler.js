@@ -32,5 +32,3 @@ function operateContext(context, value, operator) {
     return;
   }
 }
-
-export { changeCoin, changeContext, checkContext };

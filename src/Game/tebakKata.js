@@ -1,8 +1,3 @@
-// Import dependencies
-import { showMessage } from "../components.js";
-import { changeCoin, changeContext } from "./contextHandler.js";
-import { pageSelectGame } from "../routing.js";
-
 let visibleWord = [];
 let revealedIndexes = [];
 let time = 20;
@@ -180,16 +175,3 @@ document.addEventListener("DOMContentLoaded", function () {
     tebakKataSubmit(input); // panggil fungsi submit kamu
   });
 });
-
-export {
-  pageTebakKata,
-  fetchWord,
-  updateDisplay,
-  revealHint,
-  resetTimer,
-  startTimer,
-  stopTimer,
-  tebakKataSubmit,
-  plays,
-  rewards,
-};

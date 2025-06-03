@@ -1,4 +1,3 @@
-import { showMessage } from "./components.js";
 //kondisi untuk bermain
 function playCondition() {
   let hygiene = parseInt(localStorage.getItem("hygiene"));
@@ -25,5 +24,3 @@ function feedCondition() {
   }
   return true;
 }
-
-export { playCondition, feedCondition };
