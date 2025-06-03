@@ -1,3 +1,4 @@
+import { showMessage } from "./components.js";
 import { playCondition, feedCondition } from "./condition.js";
 import { pageTebakKata } from "./Game/tebakKata.js";
 
@@ -27,6 +28,7 @@ function bath() {
     hygiene = 100;
   }
   localStorage.setItem("hygiene", hygiene.toString());
+  showMessage("Byur-bur... (+50 hygiene)","success",2000);
 }
 
 //Feed Menu
@@ -34,6 +36,7 @@ function feed() {
   if (feedCondition()) {
     let hunger = parseInt(localStorage.getItem("hunger"));
     hunger -= 50;
+    showMessage("nyam-nyam.. (-50 hunger)","success",2000);
     if (hunger < 0) {
       hunger = 0;
     }
