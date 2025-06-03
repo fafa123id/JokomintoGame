@@ -99,14 +99,7 @@
 
 <body class="font-sans gradient-bg min-h-screen overflow-x-hidden">
     <div class="min-h-screen h-full flex flex-col">
-        <!-- Message Container - Diperbaiki untuk Mobile -->
-        <div id="message-container" class="flex justify-center items-center px-4 py-3 sm:p-4 hidden">
-            <div
-                class="bg-white/95 backdrop-blur-sm px-5 py-3 sm:px-6 sm:py-3 rounded-2xl card-shadow max-w-sm sm:max-w-md mx-auto">
-                <h2 id="message" class="text-gray-800 font-semibold text-sm sm:text-base text-center leading-relaxed">
-                </h2>
-            </div>
-        </div>
+
         <!-- Status Bar - Diperbesar untuk Mobile -->
         <div class="stat-bar p-3 sm:p-4 mx-3 sm:mx-4 mt-3 sm:mt-4 rounded-2xl">
             <!-- Mobile: Grid 2x2, Desktop: Horizontal -->
@@ -142,7 +135,14 @@
                 </div>
             </div>
         </div>
-
+        <!-- Message Container - Diperbaiki untuk Mobile -->
+        <div id="message-container" class="flex justify-center items-center px-4 py-3 sm:p-4 hidden mt-2">
+            <div
+                class="bg-white/95 backdrop-blur-sm px-5 py-3 sm:px-6 sm:py-3 rounded-2xl card-shadow max-w-sm sm:max-w-md mx-auto">
+                <h2 id="message" class="text-gray-800 font-semibold text-sm sm:text-base text-center leading-relaxed">
+                </h2>
+            </div>
+        </div>
         <!-- Main Content - Container Diperbesar -->
         <div class="mainScreen justify-center items-center flex-1 flex flex-col px-4 py-3 sm:p-6">
             <!-- Main Menu - Lebih Luas -->
