@@ -1,3 +1,9 @@
+function HomePage() {
+  document.getElementById("menuGame").style.display = "none";
+  document.getElementById("tebakKata").style.display = "none";
+  document.getElementById("optionButton").style.display = "flex";
+}
+
 function GameMenu() {
   if (playCondition()) {
     document.getElementById("optionButton").style.display = "none";

@@ -121,7 +121,7 @@ const startTimer = () => {
       gameTimer = null;
       document.getElementById("time").innerHTML = "0";
       showMessage("Waktu habis! katanya adalah " + word + "!");
-      pageSelectGame();
+      HomePage();
     } else {
       document.getElementById("time").innerHTML = time;
     }
@@ -152,7 +152,7 @@ const tebakKataSubmit = () => {
     resetTimer(); // Reset timer
     plays();
     rewards();
-    pageSelectGame();
+    HomePage(); // Redirect ke halaman utama setelah jawaban benar
   } else {
     // kalau kalah
     showMessage("Maaf, jawaban Anda salah!", "error", 1000);
