@@ -260,7 +260,7 @@ function checkImageAnswer() {
 // Hapus function returnToMenu yang kedua (baris 311-323)
 // Hanya gunakan yang pertama di baris 286
 
-function returnToMenu() {
+function returnToMenuFromImage() {
   // Clear timer
   clearTimer();
 
@@ -270,7 +270,6 @@ function returnToMenu() {
 
   // Reset form
   resetImageForm();
-  sendEvent("BACK");
 }
 
 // Reset form
@@ -296,8 +295,7 @@ function clearTimer() {
 }
 
 // Export functions yang diperlukan
-export { pageTebakGambar, revealImageTile, returnToMenu };
+export { pageTebakGambar, revealImageTile, returnToMenuFromImage };
 
 // Expose ke window untuk onclick handlers
 window.revealImageTile = revealImageTile;
-window.returnToMenu = returnToMenu;
