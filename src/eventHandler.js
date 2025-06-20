@@ -379,9 +379,7 @@ class EventHandler {
       
       this.subscriptions.push(
         debugToggle$.subscribe(() => {
-          const terminal = document.getElementById('debugTerminal');
-          const isVisible = terminal.style.display !== 'none';
-          terminal.style.display = isVisible ? 'none' : 'block';
+          terminal.style.display = 'block';
         })
       );
     }
