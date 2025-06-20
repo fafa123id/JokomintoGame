@@ -10,8 +10,6 @@ const charTebakKata = document.getElementById("charTebakKata");
 async function pageTebakKata() {
   // Kirim event XState untuk memulai game
   sendEvent("GAME_SELECTED");
-
-  plays();
   // Reset character image
   charTebakKata.src = "/asset/char/idle.png";
   //mulai game tebak kata
