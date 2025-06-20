@@ -39,9 +39,40 @@
         }
     </script>
     <style>
+        /* Modern Gradient Background dengan Animated Elements */
         .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
             background-attachment: fixed;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .gradient-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.2) 0%, transparent 50%);
+            pointer-events: none;
+            animation: floatingShapes 20s ease-in-out infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+        }
+
+        @keyframes floatingShapes {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(30px, -30px) rotate(120deg); }
+            66% { transform: translate(-20px, 20px) rotate(240deg); }
         }
 
         /* Mobile optimizations */
@@ -65,17 +96,62 @@
             }
         }
 
+        /* Modern Glassmorphism Cards */
         .card-shadow {
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.1),
+                0 4px 16px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
+        .card-shadow:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-4px);
+            box-shadow: 
+                0 20px 40px rgba(0, 0, 0, 0.15),
+                0 8px 24px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        }
+
+        /* Premium Button Styles */
         .btn-hover {
-            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-hover::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.6s;
+        }
+
+        .btn-hover:hover::before {
+            left: 100%;
         }
 
         .btn-hover:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 
+                0 15px 35px rgba(0, 0, 0, 0.2),
+                0 5px 15px rgba(0, 0, 0, 0.1);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .btn-hover:active {
+            transform: translateY(-1px) scale(1.01);
+            transition: all 0.1s;
         }
 
         /* Prevent button hover on mobile */
@@ -85,10 +161,81 @@
             }
         }
 
+        /* Enhanced Status Bar */
         .stat-bar {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow: 
+                0 8px 32px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .stat-bar:hover {
             background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+            box-shadow: 
+                0 12px 40px rgba(0, 0, 0, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        }
+
+        /* Animated Progress Bars */
+        .progress-bar {
+            position: relative;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .progress-bar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+
+        .progress-fill {
+            position: relative;
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 
+                0 2px 8px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        /* Floating particles untuk status indicators */
+        .status-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: floatParticle 3s infinite ease-in-out;
+        }
+
+        @keyframes floatParticle {
+            0%, 100% { 
+                transform: translateY(0) scale(1);
+                opacity: 0.6;
+            }
+            50% { 
+                transform: translateY(-20px) scale(1.2);
+                opacity: 1;
+            }
         }
 
         /* Better readability */
@@ -337,27 +484,134 @@
 </body>
 
 <body class="font-sans gradient-bg min-h-screen overflow-x-hidden">
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+    <!-- Modern Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 z-50 flex items-center justify-center modern-loading">
         <div class="text-center">
-            <!-- Spinner -->
-            <div class="relative">
-                <div
-                    class="w-16 h-16 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-4">
+            <!-- Modern Spinner -->
+            <div class="relative mb-8">
+                <div class="modern-spinner">
+                    <div class="spinner-ring ring-1"></div>
+                    <div class="spinner-ring ring-2"></div>
+                    <div class="spinner-ring ring-3"></div>
+                </div>
+                <div class="spinner-center">
+                    <span class="text-3xl">🎮</span>
                 </div>
             </div>
 
-            <!-- Loading Text -->
-            <div class="text-gray-600 text-lg font-medium mb-2">Loading...</div>
+            <!-- Loading Text dengan Typewriter Effect -->
+            <div class="text-white text-xl font-bold mb-4 typewriter">
+                <span id="loadingText">JokomintoGame</span>
+            </div>
 
-            <!-- Progress Dots -->
-            <div class="flex justify-center space-x-1">
-                <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-                <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-                <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+            <!-- Modern Progress Bar -->
+            <div class="w-64 mx-auto">
+                <div class="modern-progress-bar">
+                    <div class="modern-progress-fill"></div>
+                </div>
+                <div class="text-white text-sm mt-2 opacity-80">Initializing...</div>
             </div>
         </div>
     </div>
+
+    <style>
+        .modern-loading {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 3s ease infinite;
+        }
+
+        .modern-spinner {
+            position: relative;
+            width: 80px;
+            height: 80px;
+            margin: 0 auto;
+        }
+
+        .spinner-ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            border-top-color: rgba(255, 255, 255, 0.8);
+            animation: spin 2s linear infinite;
+        }
+
+        .ring-1 {
+            width: 80px;
+            height: 80px;
+            animation-duration: 2s;
+        }
+
+        .ring-2 {
+            width: 60px;
+            height: 60px;
+            top: 10px;
+            left: 10px;
+            animation-duration: 1.5s;
+            animation-direction: reverse;
+            border-top-color: rgba(255, 255, 255, 0.6);
+        }
+
+        .ring-3 {
+            width: 40px;
+            height: 40px;
+            top: 20px;
+            left: 20px;
+            animation-duration: 1s;
+            border-top-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .spinner-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: pulse 2s ease infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .typewriter {
+            overflow: hidden;
+            border-right: 2px solid rgba(255, 255, 255, 0.7);
+            white-space: nowrap;
+            animation: typewriter 2s steps(40, end), blink-caret 0.5s step-end infinite;
+        }
+
+        @keyframes typewriter {
+            from { width: 0; }
+            to { width: 100%; }
+        }
+
+        @keyframes blink-caret {
+            from, to { border-color: transparent; }
+            50% { border-color: rgba(255, 255, 255, 0.7); }
+        }
+
+        .modern-progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .modern-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0.8));
+            border-radius: 10px;
+            animation: progressFill 3s ease-in-out infinite;
+        }
+
+        @keyframes progressFill {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+    </style>
     <div id="sleepOverlay" class="sleep-overlay hidden">
         <div class="sleep-content">
             <div class="flex justify-center items-center w-full animate-pulse">
@@ -861,6 +1115,7 @@
     <script type="module" src="/src/stateManager.js"></script>
     <script type="module" src="/src/routing.js"></script>
     <script type="module" src="/src/eventHandler.js"></script>
+    <script type="module" src="/src/debug.js"></script>
     <script type="module" src="/src/Game/contextHandler.js"></script>
     <script type="module" src="/src/Game/tebakKata.js"></script>
     <script type="module" src="/src/Game/tebakGambar.js"></script>
