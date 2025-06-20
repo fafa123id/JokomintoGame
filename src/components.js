@@ -270,3 +270,185 @@ window.playSoundEffect = playSoundEffect;
 window.stopAudio = stopAudio;
 window.showOverlay = showOverlay;
 window.hideOverlay = hideOverlay;
+
+// Enhanced UI Effects
+function createFloatingParticles(containerId, count = 5) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  // Remove existing particles
+  container.querySelectorAll('.floating-particle').forEach(p => p.remove());
+
+  for (let i = 0; i < count; i++) {
+    const particle = document.createElement('div');
+    particle.className = 'floating-particle';
+    particle.style.cssText = `
+      position: absolute;
+      width: 4px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.6);
+      border-radius: 50%;
+      pointer-events: none;
+      left: ${Math.random() * 100}%;
+      top: ${Math.random() * 100}%;
+      animation: floatParticle ${3 + Math.random() * 2}s infinite ease-in-out;
+      animation-delay: ${Math.random() * 2}s;
+    `;
+    container.appendChild(particle);
+  }
+}
+
+// Enhanced Character Effects
+function addCharacterEffects(characterId) {
+  const character = document.getElementById(characterId);
+  if (!character) return;
+
+  const container = character.parentElement;
+  if (!container.classList.contains('character-container')) {
+    container.classList.add('character-container');
+  }
+
+  // Add floating animation class
+  character.classList.remove('animate-bounce');
+  character.classList.add('character-float');
+
+  // Add particles if not exist
+  if (!container.querySelector('.character-particle')) {
+    for (let i = 1; i <= 4; i++) {
+      const particle = document.createElement('div');
+      particle.className = `character-particle particle-${i}`;
+      container.appendChild(particle);
+    }
+
+    // Add glow effect
+    const glow = document.createElement('div');
+    glow.className = 'character-glow';
+    container.appendChild(glow);
+  }
+}
+
+// Enhanced Loading Animation
+function enhanceLoadingScreen() {
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  if (!loadingOverlay) return;
+
+  // Add modern loading class if not present
+  if (!loadingOverlay.classList.contains('modern-loading')) {
+    loadingOverlay.classList.add('modern-loading');
+  }
+
+  // Enhanced typewriter effect
+  const loadingText = document.getElementById('loadingText');
+  if (loadingText) {
+    const text = loadingText.textContent;
+    loadingText.textContent = '';
+    loadingText.style.borderRight = '2px solid rgba(255, 255, 255, 0.7)';
+    
+    let i = 0;
+    const typewriter = setInterval(() => {
+      loadingText.textContent += text.charAt(i);
+      i++;
+      if (i >= text.length) {
+        clearInterval(typewriter);
+        setTimeout(() => {
+          loadingText.style.borderRight = 'none';
+        }, 1000);
+      }
+    }, 100);
+  }
+}
+
+// Initialize Modern UI Elements
+function initializeModernUI() {
+  // Add character effects to home character
+  addCharacterEffects('charHome');
+  
+  // Add character effects to main character
+  addCharacterEffects('charMain');
+  
+  // Create floating particles for status bar
+  createFloatingParticles('statusBar', 8);
+  
+  // Add title gradient class
+  const gameTitle = document.querySelector('#gameTitle h1');
+  if (gameTitle && !gameTitle.classList.contains('title-gradient')) {
+    gameTitle.classList.add('title-gradient', 'title-shadow');
+  }
+
+  // Add subtitle glow
+  const subtitle = document.querySelector('#gameTitle p');
+  if (subtitle && !subtitle.classList.contains('subtitle-glow')) {
+    subtitle.classList.add('subtitle-glow');
+  }
+
+  // Enhance start button
+  const startBtn = document.querySelector('[data-action="start-game"]');
+  if (startBtn && !startBtn.classList.contains('premium-start-btn')) {
+    startBtn.classList.add('premium-start-btn');
+    
+    // Add sparkle effect
+    const sparkle = document.createElement('span');
+    sparkle.className = 'start-sparkle';
+    startBtn.appendChild(sparkle);
+    
+    // Update button text
+    const textSpan = startBtn.querySelector('span:last-child');
+    if (textSpan && textSpan.textContent.trim() === 'Start') {
+      textSpan.textContent = 'Start Adventure';
+    }
+  }
+
+  console.log('✨ Modern UI elements initialized');
+}
+
+// Enhanced Progress Bar Animation
+function animateProgressBar(barId, targetWidth, duration = 800) {
+  const bar = document.getElementById(barId);
+  if (!bar) return;
+
+  // Add enhanced progress classes
+  if (!bar.classList.contains('progress-fill')) {
+    bar.classList.add('progress-fill');
+  }
+
+  // Smooth animation
+  bar.style.transition = `width ${duration}ms cubic-bezier(0.4, 0, 0.2, 1)`;
+  bar.style.width = targetWidth + '%';
+
+  // Add temporary glow effect
+  bar.style.boxShadow = `
+    0 0 20px rgba(255, 255, 255, 0.5),
+    0 2px 8px rgba(0, 0, 0, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3)
+  `;
+
+  setTimeout(() => {
+    bar.style.boxShadow = `
+      0 2px 8px rgba(0, 0, 0, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.3)
+    `;
+  }, duration);
+}
+
+// Update existing updateContext function to use enhanced animations
+const originalUpdateContext = updateContext;
+updateContext = function() {
+  // Call original function
+  if (originalUpdateContext) originalUpdateContext();
+  
+  // Add enhanced animations
+  const mood = parseInt(localStorage.getItem("mood")) || 0;
+  const hygiene = parseInt(localStorage.getItem("hygiene")) || 0;
+  const hunger = parseInt(localStorage.getItem("hunger")) || 0;
+  
+  animateProgressBar('mood-bar', mood);
+  animateProgressBar('hygiene-bar', hygiene);
+  animateProgressBar('hunger-bar', hunger);
+};
+
+// Export enhanced functions
+window.initializeModernUI = initializeModernUI;
+window.createFloatingParticles = createFloatingParticles;
+window.addCharacterEffects = addCharacterEffects;
+window.enhanceLoadingScreen = enhanceLoadingScreen;
+window.animateProgressBar = animateProgressBar;
