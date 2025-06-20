@@ -1,6 +1,8 @@
 // Gunakan XState dari global scope
 const { createMachine, interpret, assign } = XState;
 import { updateChar, updateContext, updateStatus } from "./components.js";
+import { backToMainMenuFromWord } from "./Game/tebakKata.js";
+import { returnToMenuFromImage } from "./Game/tebakGambar.js";
 
 export const machine = createMachine({
   context: {
@@ -97,6 +99,11 @@ export const machine = createMachine({
           target: "idle",
         },
         BACK: {
+          actions: [
+            {
+              type: "resetTimerGame",
+            },
+          ],
           target: "idle",
         },
       },
@@ -137,6 +144,10 @@ export const machine = createMachine({
   },
 }).withConfig({
   actions: {
+    resetTimerGame: function (context, event) {
+        backToMainMenuFromWord();
+        returnToMenuFromImage();
+    },
     increaseHunger: function (context, event) {
       const currentHunger = parseInt(localStorage.getItem("hunger")) || 0;
       const newHunger = Math.min(currentHunger + 10, 100);
