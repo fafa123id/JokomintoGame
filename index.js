@@ -7,6 +7,7 @@ import {
 } from "./src/stateManager.js";
 
 import { updateChar, updateContext } from "./src/components.js";
+import { initializeEventHandler } from "./src/eventHandler.js";
 
 function init() {
   let hygiene = localStorage.getItem("hygiene");
@@ -36,6 +37,11 @@ document.addEventListener("DOMContentLoaded", function () {
   //function untuk mengupdate context ketika halaman pertama kali dimuat
   updateChar();
   updateContext();
+  
+  // Initialize RxJS Event Handler
+  initializeEventHandler();
+  console.log('🎮 RxJS Event System Ready!');
+  
   setTimeout(() => {
     document.getElementById("loadingOverlay").classList.add("hidden");
   }, 100);

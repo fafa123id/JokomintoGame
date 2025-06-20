@@ -368,7 +368,7 @@
             </div>
             <h2 class="text-2xl font-bold mb-2">Jokominto is Sleeping</h2>
             <p class="text-lg mb-6 opacity-80">Sweet dreams...</p>
-            <button onclick="wakeUp()"
+            <button data-action="wake-up"
                 class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-6 py-3 rounded-xl font-bold text-lg btn-hover">
                 ☀ Wake Up
             </button>
@@ -461,7 +461,7 @@
                 <p class="text-white/80 text-base sm:text-lg mb-8">Take care of your virtual pet!</p>
                 <button
                     class="bg-gradient-to-r from-blue-400 to-blue-600 text-white px-8 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="startGame()">
+                    data-action="start-game">
                     <span class="text-2xl sm:text-2xl mr-2"></span>Start
                 </button>
             </div>
@@ -517,17 +517,17 @@
             <div id="optionButton" class="flex flex-col space-y-4 sm:space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg">
                 <button
                     class="bg-gradient-to-r from-green-400 to-green-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="GameMenu()">
+                    data-action="game-menu">
                     <span class="text-2xl sm:text-2xl mr-2">🎯</span>Play game
                 </button>
                 <button
                     class="bg-gradient-to-r from-blue-400 to-blue-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="showMenuSabun()">
+                    data-action="soap-menu">
                     <span class="text-2xl sm:text-2xl mr-2">🛁</span>Bath
                 </button>
                 <button
                     class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="showMenuMakanan()">
+                    data-action="food-menu">
                     <span class="text-2xl sm:text-2xl mr-2">🍎</span>Eat
                 </button>
             </div>
@@ -539,17 +539,17 @@
                 </div>
                 <button
                     class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="tebakKata()">
+                    data-action="tebak-kata">
                     <span class="text-2xl sm:text-2xl mr-2">🔤</span>Guess Word
                 </button>
                 <button
                     class="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="tebakGambar()">
+                    data-action="tebak-gambar">
                     <span class="text-2xl sm:text-2xl mr-2">🖼️</span>Guess Picture
                 </button>
                 <button
                     class="bg-gradient-to-r from-red-500 to-red-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="HomePage()">
+                    data-action="home">
                     <span class="text-2xl sm:text-2xl mr-2">🔙</span>Back
                 </button>
             </div>
@@ -563,7 +563,7 @@
                 <!-- Sabun Biasa -->
                 <button
                     class="bg-gradient-to-r from-blue-400 to-blue-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="buySabun('biasa')">
+                    data-action="buy-soap" data-soap-type="biasa">
                     <div class="flex justify-between items-center">
                         <div class="text-left">
                             <div class="text-xl sm:text-xl">🧼 Normal Soap</div>
@@ -578,7 +578,7 @@
                 <!-- Sabun Wangi -->
                 <button
                     class="bg-gradient-to-r from-purple-400 to-purple-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="buySabun('wangi')">
+                    data-action="buy-soap" data-soap-type="wangi">
                     <div class="flex justify-between items-center">
                         <div class="text-left">
                             <div class="text-xl sm:text-xl">🌸 Fragrance Soap</div>
@@ -593,7 +593,7 @@
                 <!-- Sabun Premium -->
                 <button
                     class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="buySabun('premium')">
+                    data-action="buy-soap" data-soap-type="premium">
                     <div class="flex justify-between items-center">
                         <div class="text-left">
                             <div class="text-xl sm:text-xl">✨ Premium Soap</div>
@@ -608,7 +608,7 @@
                 <!-- Tombol Kembali -->
                 <button
                     class="bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover"
-                    onclick="HomePage()">
+                    data-action="home">
                     <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
                 </button>
             </div>
@@ -622,7 +622,7 @@
                 <!-- Air Putih (Gratis) -->
                 <button
                     class="bg-gradient-to-r from-blue-300 to-blue-400 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="buyMakanan('biskuit')">
+                    data-action="buy-food" data-food-type="biskuit">
                     <div class="flex justify-between items-center">
                         <div class="text-left">
                             <div class="text-xl sm:text-xl">🍪 Cookies</div>
@@ -637,7 +637,7 @@
                 <!-- Roti -->
                 <button
                     class="bg-gradient-to-r from-yellow-400 to-yellow-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="buyMakanan('roti')">
+                    data-action="buy-food" data-food-type="roti">
                     <div class="flex justify-between items-center">
                         <div class="text-left">
                             <div class="text-xl sm:text-xl">🍞 Bread</div>
@@ -652,7 +652,7 @@
                 <!-- Nasi Goreng -->
                 <button
                     class="bg-gradient-to-r from-orange-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="buyMakanan('nasigoreng')">
+                    data-action="buy-food" data-food-type="nasigoreng">
                     <div class="flex justify-between items-center">
                         <div class="text-left">
                             <div class="text-xl sm:text-xl">🍳 Nasi Goreng</div>
@@ -667,7 +667,7 @@
                 <!-- Pizza -->
                 <button
                     class="bg-gradient-to-r from-red-400 to-red-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="buyMakanan('pizza')">
+                    data-action="buy-food" data-food-type="pizza">
                     <div class="flex justify-between items-center">
                         <div class="text-left">
                             <div class="text-xl sm:text-xl">🍕 Pizza</div>
@@ -682,7 +682,7 @@
                 <!-- Steak Premium -->
                 <button
                     class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="buyMakanan('steak')">
+                    data-action="buy-food" data-food-type="steak">
                     <div class="flex justify-between items-center">
                         <div class="text-left">
                             <div class="text-xl sm:text-xl">🥩 Premium Steak</div>
@@ -697,7 +697,7 @@
                 <!-- Tombol Kembali -->
                 <button
                     class="bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover"
-                    onclick="HomePage()">
+                    data-action="home">
                     <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
                 </button>
             </div>
@@ -745,13 +745,13 @@
                     </form>
 
                     <!-- Hint Button - Spacing Diperbaiki -->
-                    <button onclick="revealHint()"
+                    <button data-action="reveal-hint"
                         class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover mb-4">
                         <span class="text-xl sm:text-xl mr-2">💡</span>Hint (-20 Coin)
                     </button>
 
                     <!-- Back Button - Spacing Diperbaiki -->
-                    <button onclick="backToMainMenu()"
+                    <button data-action="home"
                         class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
                         <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
                     </button>
@@ -813,13 +813,13 @@
                     </form>
 
                     <!-- Hint Button -->
-                    <button onclick="revealImageTile()" id="revealImageBtn"
+                    <button data-action="reveal-tile" id="revealImageBtn"
                         class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-4">
                         <span class="text-xl mr-2">🔍</span>Open Tile (-20 Coin)
                     </button>
 
                     <!-- Back Button -->
-                    <button onclick="returnToMenu()"
+                    <button data-action="home"
                         class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 rounded-2xl font-bold btn-hover">
                         <span class="text-xl mr-2">🔙</span>Back to menu
                     </button>
@@ -849,6 +849,9 @@
 
     <!-- Load XState library -->
     <script src="https://unpkg.com/xstate@4/dist/xstate.js"></script>
+    
+    <!-- Load RxJS library -->
+    <script src="https://unpkg.com/rxjs@7/dist/bundles/rxjs.umd.min.js"></script>
 
     <!-- Load semua script dengan type module -->
     <script type="module" src="index.js"></script>
@@ -857,6 +860,7 @@
     <script type="module" src="/src/stateMachine.js"></script>
     <script type="module" src="/src/stateManager.js"></script>
     <script type="module" src="/src/routing.js"></script>
+    <script type="module" src="/src/eventHandler.js"></script>
     <script type="module" src="/src/Game/contextHandler.js"></script>
     <script type="module" src="/src/Game/tebakKata.js"></script>
     <script type="module" src="/src/Game/tebakGambar.js"></script>
