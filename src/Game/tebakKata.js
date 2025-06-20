@@ -21,7 +21,7 @@ async function pageTebakKata() {
   document
     .getElementById("tebakKataForm")
     .querySelector('button[type="submit"]').disabled = true;
-  document.querySelector('button[onclick="revealHint()"]').disabled = true;
+  document.querySelector('button[data-action="reveal-hint"]').disabled = true;
   resetTimer(); //reset timer
   document.getElementById("time").innerHTML = "Loading...";
   await fetchWord();
@@ -30,7 +30,7 @@ async function pageTebakKata() {
   document
     .getElementById("tebakKataForm")
     .querySelector('button[type="submit"]').disabled = false;
-  document.querySelector('button[onclick="revealHint()"]').disabled = false;
+  document.querySelector('button[data-action="reveal-hint"]').disabled = false;
   startTimer(); // Mulai timer saat game dimulai
 }
 
