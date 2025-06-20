@@ -41,21 +41,12 @@ function mustFeed() {
   }
   return true;
 }
-function plays() {
-  changeContext("hunger", 10, "+"); // Tambahi hunger 10 saat main
-}
-function rewards() {
-  changeCoin(30, "+"); // Tambahi coin 20 setelah main
-  changeContext("mood", 40, "+"); // Tambahi mood 40 setelah main
-}
 
 // Export functions
-export { playCondition, feedCondition, mustHygiene, mustFeed, plays, rewards };
+export { playCondition, feedCondition, mustHygiene, mustFeed };
 
 // Expose to window for global access
 window.playCondition = playCondition;
 window.feedCondition = feedCondition;
 window.mustHygiene = mustHygiene;
 window.mustFeed = mustFeed;
-window.plays = plays;
-window.rewards = rewards;
