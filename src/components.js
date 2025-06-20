@@ -244,7 +244,7 @@ const updateStatus = () => {
       mood -= 6;
       localStorage.setItem("mood", Math.max(0, Math.min(100, mood)).toString());
     }
-  }, 5000);
+  }, 8000);
 
   // Cleanup function
   return () => {
