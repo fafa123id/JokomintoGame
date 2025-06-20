@@ -1,9 +1,19 @@
+import { sendEvent } from "../stateManager.js";
+import { changeCoin } from "./contextHandler.js";
+import { showMessage, playSoundEffect } from "../components.js";
 let visibleWord = [];
 let revealedIndexes = [];
 let time = 20;
-let gameTimer = null; // Tambahkan variabel untuk menyimpan timer
+let gameTimer = null;
+const charTebakKata = document.getElementById("charTebakKata");
 
 async function pageTebakKata() {
+  // Kirim event XState untuk memulai game
+  sendEvent("GAME_SELECTED");
+
+  plays();
+  // Reset character image
+  charTebakKata.src = "/asset/char/idle.png";
   //mulai game tebak kata
   document.getElementById("menuGame").style.display = "none";
   document.getElementById("tebakKata").style.display = "flex";
@@ -53,6 +63,7 @@ const fetchWord = async () => {
     }
 
     localStorage.setItem("word", word);
+    playSoundEffect("ding");
     updateDisplay();
   } catch (error) {
     console.error("Error fetching word:", error);
@@ -67,25 +78,22 @@ function updateDisplay() {
 function revealHint() {
   let coin = localStorage.getItem("coin");
   if (coin < 20) {
-    showMessage("Coin kurang untuk mendapatkan hint!", "error", 1000);
+    showMessage("Insufficient coint to get hint!", "error", 1000, true);
     return;
   }
-  showMessage("Kamu membayar 20 coin untuk hint", "success", 1000);
-  changeCoin(20, "-");
+
   const arrayWord = localStorage.getItem("word").split("");
   const hiddenIndexes = arrayWord
     .map((_, idx) => idx)
     .filter((idx) => !revealedIndexes.includes(idx));
 
   if (hiddenIndexes.length === 0) {
-    showMessage(
-      "Tidak ada huruf tersembunyi untuk ditampilkan.",
-      "error",
-      1000
-    );
+    showMessage("There is no hidden letter to show", "error", 1000, true);
     return;
   }
-
+  showMessage("You've paid 20 coint for hint", "success", 1000);
+  playSoundEffect("ding");
+  changeCoin(20, "-");
   const randomIndex =
     hiddenIndexes[Math.floor(Math.random() * hiddenIndexes.length)];
   revealedIndexes.push(randomIndex);
@@ -97,31 +105,29 @@ const resetTimer = () => {
   time = 20;
   document.getElementById("inputTebakKata").value = "";
   // Clear timer yang sedang berjalan jika ada
-  if (gameTimer) {
-    clearInterval(gameTimer);
-    gameTimer = null;
-  }
+  stopTimer();
 };
 
 const startTimer = () => {
   let word = localStorage.getItem("word");
   // Clear timer sebelumnya jika ada
-  if (gameTimer) {
-    clearInterval(gameTimer);
-  }
-
+  stopTimer();
   // Update display dengan nilai awal
   document.getElementById("time").innerHTML = time;
 
   gameTimer = setInterval(() => {
     time--;
-
+    playSoundEffect("tick");
     if (time <= 0) {
       clearInterval(gameTimer);
       gameTimer = null;
+      stopAudio();
       document.getElementById("time").innerHTML = "0";
-      showMessage("Waktu habis! katanya adalah " + word + "!");
-      HomePage();
+      showMessage("Time up! The word is " + word + "!", "error", 2000, true);
+      charTebakKata.src = "/asset/char/wrong.png";
+      setTimeout(() => {
+        HomePage();
+      }, 2000);
     } else {
       document.getElementById("time").innerHTML = time;
     }
@@ -133,6 +139,7 @@ const stopTimer = () => {
   if (gameTimer) {
     clearInterval(gameTimer);
     gameTimer = null;
+    stopAudio();
   }
 };
 
@@ -142,30 +149,35 @@ const tebakKataSubmit = () => {
     .getElementById("inputTebakKata")
     .value.toLowerCase();
   if (inputWord === word) {
-    // ini kalau bener
-    showMessage(
-      "Selamat! Anda berhasil menebak kata! (+20 Coin) (+10 Hunger) (+40 mood)",
-      "success",
-      2000
-    );
-    stopTimer(); // Hentikan timer saat jawaban benar
     resetTimer(); // Reset timer
-    plays();
-    rewards();
-    HomePage(); // Redirect ke halaman utama setelah jawaban benar
+    charTebakKata.src = "/asset/char/happy.png";
+    // ini kalau bener - kirim event WIN ke XState
+    sendEvent("WIN", {
+      params: {
+        mood: 40,
+        coin: 30,
+      },
+    });
+    showMessage(
+      "Congratulations! You have successfully guessed the word! (+30 Coin) (+40 mood)",
+      "success",
+      2000,
+      true
+    );
   } else {
     // kalau kalah
-    showMessage("Maaf, jawaban Anda salah!", "error", 1000);
+    charTebakKata.src = "/asset/char/wrong.png";
+    setTimeout(() => {
+      charTebakKata.src = "/asset/char/idle.png";
+    }, 2000);
+    showMessage("Sorry, your answer is wrong!", "error", 1000, true);
   }
 };
-function plays() {
-  changeContext("hunger", 10, "+"); // Tambahi hunger 10 setelah main
-  changeContext("mood", 40, "+"); // Tambahi mood 40 setelah main
-}
-function rewards() {
-  changeContext("coin", 20, "+"); // Tambahi coin 20 setelah main
-}
 
+function backToMainMenu() {
+  sendEvent("BACK");
+  resetTimer();
+}
 document.addEventListener("DOMContentLoaded", function () {
   const form = document.getElementById("tebakKataForm");
   form.addEventListener("submit", function (event) {
@@ -175,3 +187,14 @@ document.addEventListener("DOMContentLoaded", function () {
     tebakKataSubmit(input); // panggil fungsi submit kamu
   });
 });
+
+// Export functions
+export { pageTebakKata };
+
+// Expose ke window untuk onclick handlers
+window.pageTebakKata = pageTebakKata;
+window.submitGuess = tebakKataSubmit; // Map submitGuess to tebakKataSubmit
+window.tebakKataSubmit = tebakKataSubmit;
+window.returnToMenu = backToMainMenu;
+window.revealHint = revealHint;
+window.backToMainMenu = backToMainMenu;

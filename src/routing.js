@@ -1,48 +1,60 @@
-function HomePage() {
-  document.getElementById("menuGame").style.display = "none";
-  document.getElementById("tebakKata").style.display = "none";
-  document.getElementById("optionButton").style.display = "flex";
-}
+import { sendEvent } from "./stateManager.js";
+import { pageTebakKata } from "./Game/tebakKata.js";
+import { pageTebakGambar } from "./Game/tebakGambar.js";
+import { showMenuMakanan } from "./Menu/foodMenu.js";
+import { showMenuSabun } from "./Menu/soapMenu.js";
+import { playCondition, feedCondition } from "./condition.js";
 
 function GameMenu() {
   if (playCondition()) {
-    document.getElementById("optionButton").style.display = "none";
-    pageSelectGame();
+    sendEvent("PLAY");
   }
 }
 
-//Game Menu
-function pageSelectGame() {
-  //mulai game menu
-  document.getElementById("menuGame").style.display = "flex";
-  document.getElementById("tebakKata").style.display = "none";
-}
 function tebakKata() {
-  //mulai game tebak kata
-  pageTebakKata();
-}
-
-//Bath Menu
-function bath() {
-  let hygiene = parseInt(localStorage.getItem("hygiene"));
-  hygiene += 50;
-  if (hygiene > 100) {
-    hygiene = 100;
-  }
-  localStorage.setItem("hygiene", hygiene.toString());
-  showMessage("Byur-bur... (+50 hygiene)","success",2000);
-}
-
-//Feed Menu
-function feed() {
-  if (feedCondition()) {
-    let hunger = parseInt(localStorage.getItem("hunger"));
-    hunger -= 50;
-    showMessage("nyam-nyam.. (-50 hunger)","success",2000);
-    if (hunger < 0) {
-      hunger = 0;
-    }
-    localStorage.setItem("hunger", hunger.toString());
+  if (playCondition()) {
+    pageTebakKata();
+  } else {
+    sendEvent("BACK");
   }
 }
 
+function tebakGambar() {
+  if (playCondition()) {
+    pageTebakGambar();
+  } else {
+    sendEvent("BACK");
+  }
+}
+
+function HomePage() {
+  sendEvent("BACK");
+}
+
+function pageSelectGame() {
+  // UI update will be handled by XState state manager
+}
+function startGame() {
+  sendEvent("START");
+}
+// Export functions dan expose ke global scope
+export {
+  GameMenu,
+  tebakKata,
+  tebakGambar,
+  HomePage,
+  pageSelectGame,
+  showMenuMakanan,
+  showMenuSabun,
+  startGame,
+};
+
+// Expose ke window untuk onclick handlers
+window.GameMenu = GameMenu;
+window.tebakKata = tebakKata;
+window.tebakGambar = tebakGambar;
+window.HomePage = HomePage;
+window.pageSelectGame = pageSelectGame;
+window.showMenuMakanan = showMenuMakanan;
+window.showMenuSabun = showMenuSabun;
+window.startGame = startGame;

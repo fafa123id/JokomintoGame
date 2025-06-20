@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JokomintoGame - Virtual Pet</title>
+    <link rel="icon"
+        href="https://ubmagerbucket.s3.ap-southeast-1.amazonaws.com/4dbfdc24-cf28-4c85-a014-57412a0b3d7d.png"
+        type="image/png">
     <!-- Tambahkan Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -21,7 +24,7 @@
                         'game': ['Fredoka One', 'cursive'],
                     },
                     animation: {
-                        'bounce-slow': 'bounce 2s infinite',
+                        'bounce-fast': 'bounce 1s infinite',
                         'pulse-slow': 'pulse 3s infinite',
                         'wiggle': 'wiggle 1s ease-in-out infinite',
                     },
@@ -94,42 +97,345 @@
                 line-height: 1.6;
             }
         }
+
+        /* Status Bubbles */
+        .status-bubble {
+            position: absolute;
+            top: -45px;
+            z-index: 10;
+            animation: bounce-bubble 2s infinite;
+        }
+
+        .bubble-content {
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            border: 2px solid #000000;
+            border-radius: 20px;
+            padding: 8px 12px;
+            font-size: 18px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        /* Posisi Bubble */
+        .bubble-left {
+            left: -10px;
+        }
+
+        .bubble-center {
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .bubble-right {
+            right: -10px;
+        }
+
+        /* Bubble Tails (Ekor Bubble) */
+        .bubble-tail {
+            position: absolute;
+            top: 100%;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid rgba(0, 0, 0, 0.95);
+        }
+
+        .bubble-tail-left {
+            left: 15px;
+        }
+
+        .bubble-tail-center {
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .bubble-tail-right {
+            right: 15px;
+        }
+
+        /* Animasi Bounce */
+        @keyframes bounce-bubble {
+
+            0%,
+            20%,
+            50%,
+            80%,
+            100% {
+                transform: translateY(0);
+            }
+
+            40% {
+                transform: translateY(-8px);
+            }
+
+            60% {
+                transform: translateY(-4px);
+            }
+        }
+
+        /* Untuk bubble center, gabungkan dengan translateX */
+        .bubble-center {
+            animation: bounce-bubble-center 2s infinite;
+        }
+
+        @keyframes bounce-bubble-center {
+
+            0%,
+            20%,
+            50%,
+            80%,
+            100% {
+                transform: translateX(-50%) translateY(0);
+            }
+
+            40% {
+                transform: translateX(-50%) translateY(-8px);
+            }
+
+            60% {
+                transform: translateX(-50%) translateY(-4px);
+            }
+        }
+
+        .sleep-mode {
+            filter: brightness(0.3) blur(2px);
+            transition: all 0.5s ease-in-out;
+        }
+
+        .sleep-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .sleep-content {
+            text-align: center;
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* Debug Terminal Styles */
+        .debug-terminal {
+            position: flex;
+            top: 50px;
+            right: 20px;
+            width: 400px;
+            height: 300px;
+            background: #1e1e1e;
+            border: 2px solid #333;
+            border-radius: 8px;
+            z-index: 9999;
+            font-family: 'Courier New', monospace;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .debug-header {
+            background: #333;
+            color: #fff;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 6px 6px 0 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .debug-btn {
+            background: #555;
+            color: #fff;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+
+        .debug-btn:hover {
+            background: #666;
+        }
+
+                .debug-content {
+            height: calc(100% - 40px);
+            overflow-y: auto;
+            padding: 10px;
+            color: #00ff00;
+            font-size: 12px;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .debug-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #333;
+            color: #fff;
+            border: 2px solid #555;
+            cursor: pointer;
+            font-size: 20px;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .debug-toggle:hover {
+            background: #555;
+        }
+
+        .debug-log {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+
+        .debug-log.transition {
+            color: #00ff00;
+        }
+
+        .debug-log.error {
+            color: #ff4444;
+        }
+
+        .debug-log.info {
+            color: #4488ff;
+        }
+
+        .debug-log.timestamp {
+            color: #888;
+            font-size: 10px;
+        }
+    </style>
     </style>
 </head>
+</body>
 
 <body class="font-sans gradient-bg min-h-screen overflow-x-hidden">
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="text-center">
+            <!-- Spinner -->
+            <div class="relative">
+                <div
+                    class="w-16 h-16 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin mx-auto mb-4">
+                </div>
+            </div>
+
+            <!-- Loading Text -->
+            <div class="text-gray-600 text-lg font-medium mb-2">Loading...</div>
+
+            <!-- Progress Dots -->
+            <div class="flex justify-center space-x-1">
+                <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
+                <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
+                <div class="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
+            </div>
+        </div>
+    </div>
     <div class="min-h-screen h-full flex flex-col">
 
+        <div id="sleepOverlay" class="sleep-overlay hidden">
+            <div class="sleep-content">
+                <div class="flex justify-center items-center w-full animate-pulse">
+                    <div class="w-48 h-48 flex items-center justify-center relative">
+                        <img id="charSleep" src="/asset/char/sleep.png" alt="character"
+                            class="max-w-full max-h-full object-contain">
+                    </div>
+                </div>
+                <h2 class="text-2xl font-bold mb-2">Jokominto is Sleeping</h2>
+                <p class="text-lg mb-6 opacity-80">Sweet dreams...</p>
+                <button onclick="wakeUp()"
+                    class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-6 py-3 rounded-xl font-bold text-lg btn-hover">
+                    ☀ Wake Up
+                </button>
+            </div>
+        </div>
         <!-- Status Bar - Diperbesar untuk Mobile -->
-        <div class="stat-bar p-3 sm:p-4 mx-3 sm:mx-4 mt-3 sm:mt-4 rounded-2xl">
+        <div id="statusBar" class="stat-bar p-3 sm:p-4 mx-3 sm:mx-4 mt-2 sm:mt-3 rounded-2xl">
             <!-- Mobile: Grid 2x2, Desktop: Horizontal -->
             <div
-                class="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-4 lg:space-x-6 lg:flex-nowrap lg:gap-0">
-                <div class="flex items-center space-x-2 bg-white/25 px-3 py-2 sm:px-4 sm:py-2 rounded-full min-w-0">
-                    <span class="text-lg sm:text-2xl">😊</span>
-                    <div class="min-w-0">
-                        <p class="text-white font-semibold text-sm sm:text-sm truncate">Mood</p>
-                        <p class="text-white font-bold text-sm sm:text-base" id="mood"></p>
+                class="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:justify-center sm:gap-4 lg:space-x-6 lg:flex-nowrap lg:gap-0">
+                <!-- Mood Status -->
+                <div class="flex flex-col space-y-2 bg-white/25 px-4 py-3 rounded-xl min-w-0 flex-1">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xl sm:text-2xl">😊</span>
+                            <p class="text-white font-semibold text-sm sm:text-base">Mood</p>
+                        </div>
+                        <p class="text-white font-bold text-sm sm:text-base" id="mood-value"></p>
+                    </div>
+                    <div class="w-full bg-white/20 rounded-full h-2.5">
+                        <div id="mood-bar"
+                            class="bg-gradient-to-r from-yellow-400 to-green-500 h-2.5 rounded-full transition-all duration-500"
+                            style="width: 100%"></div>
                     </div>
                 </div>
-                <div class="flex items-center space-x-2 bg-white/25 px-3 py-2 sm:px-4 sm:py-2 rounded-full min-w-0">
-                    <span class="text-lg sm:text-2xl">🛁</span>
-                    <div class="min-w-0">
-                        <p class="text-white font-semibold text-sm sm:text-sm truncate">Hygiene</p>
-                        <p class="text-white font-bold text-sm sm:text-base" id="hygiene"></p>
+
+                <!-- Hygiene Status -->
+                <div class="flex flex-col space-y-2 bg-white/25 px-4 py-3 rounded-xl min-w-0 flex-1">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xl sm:text-2xl">🛁</span>
+                            <p class="text-white font-semibold text-sm sm:text-base">Hygiene</p>
+                        </div>
+                        <p class="text-white font-bold text-sm sm:text-base" id="hygiene-value"></p>
+                    </div>
+                    <div class="w-full bg-white/20 rounded-full h-2.5">
+                        <div id="hygiene-bar"
+                            class="bg-gradient-to-r from-blue-400 to-cyan-500 h-2.5 rounded-full transition-all duration-500"
+                            style="width: 100%"></div>
                     </div>
                 </div>
-                <div class="flex items-center space-x-2 bg-white/25 px-3 py-2 sm:px-4 sm:py-2 rounded-full min-w-0">
-                    <span class="text-lg sm:text-2xl">🍎</span>
-                    <div class="min-w-0">
-                        <p class="text-white font-semibold text-sm sm:text-sm truncate">Hunger</p>
-                        <p class="text-white font-bold text-sm sm:text-base" id="hunger"></p>
+
+                <!-- Hunger Status -->
+                <div class="flex flex-col space-y-2 bg-white/25 px-4 py-3 rounded-xl min-w-0 flex-1">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xl sm:text-2xl">🍎</span>
+                            <p class="text-white font-semibold text-sm sm:text-base">Hunger</p>
+                        </div>
+                        <p class="text-white font-bold text-sm sm:text-base" id="hunger-value"></p>
+                    </div>
+                    <div class="w-full bg-white/20 rounded-full h-2.5">
+                        <div id="hunger-bar"
+                            class="bg-gradient-to-r from-green-400 to-green-500 h-2.5 rounded-full transition-all duration-500"
+                            style="width: 0%"></div>
                     </div>
                 </div>
-                <div class="flex items-center space-x-2 bg-white/25 px-3 py-2 sm:px-4 sm:py-2 rounded-full min-w-0">
-                    <span class="text-lg sm:text-2xl">🪙</span>
-                    <div class="min-w-0">
-                        <p class="text-white font-semibold text-sm sm:text-sm truncate">Coin</p>
+
+                <!-- Coin Status -->
+                <div class="flex flex-col space-y-2 bg-white/25 px-4 py-3 rounded-xl min-w-0 flex-1">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="text-xl sm:text-2xl">🪙</span>
+                            <p class="text-white font-semibold text-sm sm:text-base">Coin</p>
+                        </div>
                         <p class="text-white font-bold text-sm sm:text-base" id="coin"></p>
                     </div>
                 </div>
@@ -143,64 +449,284 @@
                 </h2>
             </div>
         </div>
-        <!-- Main Content - Container Diperbesar -->
+        <!-- Main Content -->
         <div class="mainScreen justify-center items-center flex-1 flex flex-col px-4 py-3 sm:p-6">
-            <!-- Main Menu - Lebih Luas -->
-            <div id="optionButton" class="flex flex-col space-y-4 sm:space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg">
-                <div class="text-center mb-6 sm:mb-8">
-                    <h1 class="font-game text-3xl sm:text-4xl text-white mb-2 animate-bounce-slow">🎮 JokomintoGame</h1>
-                    <p class="text-white/80 text-base sm:text-lg">Take care of your virtual pet!</p>
+            <div id="gameTitle" class="text-center mb-6 sm:mb-8">
+                <div class="flex justify-center items-center w-full mb-4">
+                    <div class="w-48 h-48 flex items-center justify-center relative">
+                        <img id="charHome" src="/asset/char/idle.png" alt="character"
+                            class="max-w-full max-h-full object-contain animate-bounce">
+                    </div>
                 </div>
+                <h1 class="font-game text-3xl sm:text-4xl text-white mb-2">🎮 JokomintoGame</h1>
+                <p class="text-white/80 text-base sm:text-lg mb-8">Take care of your virtual pet!</p>
+                <button
+                    class="bg-gradient-to-r from-blue-400 to-blue-600 text-white px-8 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="startGame()">
+                    <span class="text-2xl sm:text-2xl mr-2"></span>Start
+                </button>
+            </div>
+            <!-- Main Menu char -->
+            <div id="MainCharDiv" class="flex justify-center items-center w-full mt-8 mb-8">
+                <div class="flex justify-center items-center w-full">
+                    <div class="w-48 h-48 flex items-center justify-center relative">
+                        <img id="charMain" src="/asset/char/idle.png" alt="character"
+                            class="max-w-full max-h-full object-contain">
+
+                        <!-- Status Bubbles -->
+                        <!-- Bubble Lapar (Kanan Atas) -->
+                        <div id="hungerBubble" class="status-bubble bubble-right">
+                            <div class="bubble-content">
+                                🍽️
+                            </div>
+                            <div class="bubble-tail bubble-tail-right"></div>
+                        </div>
+
+                        <!-- Bubble Mood Buruk (Tengah Atas) -->
+                        <div id="moodBubble" class="status-bubble bubble-center">
+                            <div class="bubble-content">
+                                😤
+                            </div>
+                            <div class="bubble-tail bubble-tail-center"></div>
+                        </div>
+
+                        <!-- Bubble Kotor (Kiri Atas) -->
+                        <div id="hygieneBubble" class="status-bubble bubble-left">
+                            <div class="bubble-content">
+                                💧
+                            </div>
+                            <div class="bubble-tail bubble-tail-left"></div>
+                        </div>
+
+                        <!-- Bath Overlay -->
+                        <div id="overlay" class="absolute inset-0 flex items-center justify-center hidden">
+                            <img id="overlaygif" src="" alt="overlay animation"
+                                class="w-full h-full object-contain pointer-events-none">
+                        </div>
+                        <div id="overlayHunger" class="absolute inset-0 flex items-center justify-center hidden">
+                            <img id="overlaygif" src="/asset/gif/hungry.gif" alt="overlay animation"
+                                class="w-full h-full object-contain pointer-events-none">
+                        </div>
+                        <div id="overlayHygiene"
+                            class="absolute inset-0 flex items-center justify-center px-5 translate-y-16 hidden">
+                            <img id="overlaygif" src="/asset/gif/dirty.gif" alt="overlay animation"
+                                class="w-full h-full object-contain pointer-events-none">
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="optionButton" class="flex flex-col space-y-4 sm:space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg">
                 <button
                     class="bg-gradient-to-r from-green-400 to-green-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
                     onclick="GameMenu()">
-                    <span class="text-2xl sm:text-2xl mr-2">🎯</span>Main Game
+                    <span class="text-2xl sm:text-2xl mr-2">🎯</span>Play game
                 </button>
                 <button
                     class="bg-gradient-to-r from-blue-400 to-blue-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="bath()">
-                    <span class="text-2xl sm:text-2xl mr-2">🛁</span>Mandi
+                    onclick="showMenuSabun()">
+                    <span class="text-2xl sm:text-2xl mr-2">🛁</span>Bath
                 </button>
                 <button
                     class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="feed()">
-                    <span class="text-2xl sm:text-2xl mr-2">🍎</span>Makan
+                    onclick="showMenuMakanan()">
+                    <span class="text-2xl sm:text-2xl mr-2">🍎</span>Eat
                 </button>
             </div>
 
-            <!-- Game Menu - Lebih Luas -->
-            <div id="menuGame"
-                class="flex flex-col space-y-4 sm:space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg hidden">
+            <!-- Game Menu -->
+            <div id="menuGame" class="flex flex-col space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg hidden">
                 <div class="text-center mb-6 sm:mb-6">
-                    <h1 class="font-game text-3xl sm:text-3xl text-white mb-2">🎮 Pilih Game</h1>
+                    <h1 class="font-game text-3xl sm:text-3xl text-white mb-2">🎮 Choose Game</h1>
                 </div>
                 <button
                     class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
                     onclick="tebakKata()">
-                    <span class="text-2xl sm:text-2xl mr-2">🔤</span>Tebak Kata
+                    <span class="text-2xl sm:text-2xl mr-2">🔤</span>Guess Word
+                </button>
+                <button
+                    class="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="tebakGambar()">
+                    <span class="text-2xl sm:text-2xl mr-2">🖼️</span>Guess Picture
                 </button>
                 <button
                     class="bg-gradient-to-r from-red-500 to-red-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                    onclick="window.location='/index.html'">
-                    <span class="text-2xl sm:text-2xl mr-2">🔙</span>Kembali
+                    onclick="HomePage()">
+                    <span class="text-2xl sm:text-2xl mr-2">🔙</span>Back
                 </button>
             </div>
+            <!-- Menu Pilih Sabun - Tambahkan setelah menuGame -->
+            <div id="menuSabun" class="flex flex-col space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg hidden">
+                <div class="text-center mb-6 sm:mb-6">
+                    <h1 class="font-game text-3xl sm:text-3xl text-white mb-2">🧼 Choose soap</h1>
+                    <p class="text-white/80 text-sm sm:text-base">Choose soap to increase the hygiene</p>
+                </div>
 
+                <!-- Sabun Biasa -->
+                <button
+                    class="bg-gradient-to-r from-blue-400 to-blue-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="buySabun('biasa')">
+                    <div class="flex justify-between items-center">
+                        <div class="text-left">
+                            <div class="text-xl sm:text-xl">🧼 Normal Soap</div>
+                            <div class="text-sm opacity-80">+30 Hygiene</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold text-green-200">FREE</div>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Sabun Wangi -->
+                <button
+                    class="bg-gradient-to-r from-purple-400 to-purple-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="buySabun('wangi')">
+                    <div class="flex justify-between items-center">
+                        <div class="text-left">
+                            <div class="text-xl sm:text-xl">🌸 Fragrance Soap</div>
+                            <div class="text-sm opacity-80">+50 Hygiene</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold">25 💰</div>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Sabun Premium -->
+                <button
+                    class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="buySabun('premium')">
+                    <div class="flex justify-between items-center">
+                        <div class="text-left">
+                            <div class="text-xl sm:text-xl">✨ Premium Soap</div>
+                            <div class="text-sm opacity-80">+80 Hygiene</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold">50 💰</div>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Tombol Kembali -->
+                <button
+                    class="bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover"
+                    onclick="HomePage()">
+                    <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                </button>
+            </div>
+            <!-- Menu Pilih Makanan - Tambahkan setelah menuSabun -->
+            <div id="menuMakanan" class="flex flex-col space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg hidden">
+                <div class="text-center mb-6 sm:mb-6">
+                    <h1 class="font-game text-3xl sm:text-3xl text-white mb-2">🍽️ Choose Food</h1>
+                    <p class="text-white/80 text-sm sm:text-base">Choose food to reduce hunger</p>
+                </div>
+
+                <!-- Air Putih (Gratis) -->
+                <button
+                    class="bg-gradient-to-r from-blue-300 to-blue-400 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="buyMakanan('biskuit')">
+                    <div class="flex justify-between items-center">
+                        <div class="text-left">
+                            <div class="text-xl sm:text-xl">🍪 Cookies</div>
+                            <div class="text-sm opacity-80">-10 Hunger</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold text-green-200">FREE</div>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Roti -->
+                <button
+                    class="bg-gradient-to-r from-yellow-400 to-yellow-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="buyMakanan('roti')">
+                    <div class="flex justify-between items-center">
+                        <div class="text-left">
+                            <div class="text-xl sm:text-xl">🍞 Bread</div>
+                            <div class="text-sm opacity-80">-25 Hunger</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold">5 💰</div>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Nasi Goreng -->
+                <button
+                    class="bg-gradient-to-r from-orange-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="buyMakanan('nasigoreng')">
+                    <div class="flex justify-between items-center">
+                        <div class="text-left">
+                            <div class="text-xl sm:text-xl">🍳 Nasi Goreng</div>
+                            <div class="text-sm opacity-80">-40 Hunger</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold">15 💰</div>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Pizza -->
+                <button
+                    class="bg-gradient-to-r from-red-400 to-red-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="buyMakanan('pizza')">
+                    <div class="flex justify-between items-center">
+                        <div class="text-left">
+                            <div class="text-xl sm:text-xl">🍕 Pizza</div>
+                            <div class="text-sm opacity-80">-60 Hunger</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold">30 💰</div>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Steak Premium -->
+                <button
+                    class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                    onclick="buyMakanan('steak')">
+                    <div class="flex justify-between items-center">
+                        <div class="text-left">
+                            <div class="text-xl sm:text-xl">🥩 Premium Steak</div>
+                            <div class="text-sm opacity-80">-80 Hunger</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-bold">60 💰</div>
+                        </div>
+                    </div>
+                </button>
+
+                <!-- Tombol Kembali -->
+                <button
+                    class="bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover"
+                    onclick="HomePage()">
+                    <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                </button>
+            </div>
             <!-- Tebak Kata Game - Spacing Diperbaiki -->
             <div id="tebakKata"
                 class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl hidden">
+                <div class="flex justify-center items-center w-full mt-8 animate-bounce">
+                    <div class="flex justify-center items-center w-full">
+                        <div class="w-48 h-48 flex items-center justify-center">
+                            <img id="charTebakKata" src="/asset/char/idle.png" alt="character"
+                                class="max-w-full max-h-full object-contain">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="bg-white/95 backdrop-blur-sm p-5 sm:p-6 rounded-3xl card-shadow">
                     <div class="text-center mb-5 sm:mb-6">
-                        <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-2">🔤 Game Tebak Kata</h1>
-                        <p class="text-gray-600 text-sm sm:text-base leading-relaxed">Tebak kata berdasarkan petunjuk
-                            yang diberikan!</p>
+                        <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-2">🔤 Game Guess Word</h1>
+                        <p class="text-gray-600 text-sm sm:text-base leading-relaxed">Guess the word based on the
+                            clues
+                            given!</p>
                     </div>
 
                     <!-- Timer - Lebih Besar -->
                     <div
                         class="bg-gradient-to-r from-red-400 to-red-600 text-white p-3 sm:p-3 rounded-2xl text-center mb-4 sm:mb-4">
-                        <p class="font-bold text-lg sm:text-lg">⏰ Waktu: <span id="time" class="animate-pulse">5</span>
-                            detik</p>
+                        <p class="font-bold text-lg sm:text-lg">⏰ Time: <span id="time" class="animate-pulse">5</span>
+                            second</p>
                     </div>
 
                     <!-- Word Display - Lebih Besar -->
@@ -211,11 +737,11 @@
 
                     <!-- Input Form - Spacing Diperbaiki -->
                     <form id="tebakKataForm" class="space-y-4 sm:space-y-4 mb-4">
-                        <input type="text" id="inputTebakKata" placeholder="Masukkan kata..." required
+                        <input type="text" id="inputTebakKata" placeholder="Enter word.." required
                             class="w-full p-4 sm:p-4 rounded-2xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none text-lg sm:text-lg font-semibold text-center">
                         <button type="submit"
                             class="w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover">
-                            <span class="text-xl sm:text-xl mr-2">✅</span>Submit Jawaban
+                            <span class="text-xl sm:text-xl mr-2">✅</span>Submit Answer
                         </button>
                     </form>
 
@@ -226,23 +752,157 @@
                     </button>
 
                     <!-- Back Button - Spacing Diperbaiki -->
-                    <button onclick="window.location='/index.html'"
+                    <button onclick="backToMainMenu()"
                         class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
-                        <span class="text-xl sm:text-xl mr-2">🔙</span>Kembali ke Menu
+                        <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tebak Gambar Game - Simple Version -->
+            <div id="tebakGambar"
+                class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl hidden">
+                <div class="flex justify-center items-center w-full mt-8 animate-bounce">
+                    <div class="flex justify-center items-center w-full">
+                        <div class="w-48 h-48 flex items-center justify-center">
+                            <img id="charTebakGambar" src="/asset/char/idle.png" alt="character"
+                                class="max-w-full max-h-full object-contain">
+                        </div>
+                    </div>
+                </div>
+                <div class="bg-white/95 backdrop-blur-sm p-5 sm:p-6 rounded-3xl card-shadow">
+                    <div class="text-center mb-5 sm:mb-6">
+                        <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-2">🖼️ Game Guess Picture</h1>
+                        <p class="text-gray-600 text-sm sm:text-base leading-relaxed">Guess the picture based on the
+                            visible part!</p>
+                    </div>
+
+                    <!-- Timer -->
+                    <div
+                        class="bg-gradient-to-r from-red-400 to-red-600 text-white p-3 sm:p-3 rounded-2xl text-center mb-4 sm:mb-4">
+                        <p class="font-bold text-lg sm:text-lg">⏰ Time: <span id="imageTime"
+                                class="animate-pulse">30</span> second</p>
+                    </div>
+
+                    <!-- Image Container with Grid Overlay -->
+                    <div class="relative mb-5 bg-gray-200 rounded-2xl overflow-hidden" style="aspect-ratio: 1;">
+                        <!-- Background Image -->
+                        <img id="gameImage" src="" alt="Guess this image" class="w-full h-full object-cover">
+
+                        <!-- Grid Overlay (3x3) -->
+                        <div class="absolute inset-0 grid grid-cols-3 grid-rows-3">
+                            <div class="overlay-tile bg-black transition-all" data-index="0"></div>
+                            <div class="overlay-tile bg-black transition-all" data-index="1"></div>
+                            <div class="overlay-tile bg-black transition-all" data-index="2"></div>
+                            <div class="overlay-tile bg-black transition-all" data-index="3"></div>
+                            <div class="overlay-tile bg-black transition-all" data-index="4"></div>
+                            <div class="overlay-tile bg-black transition-all" data-index="5"></div>
+                            <div class="overlay-tile bg-black transition-all" data-index="6"></div>
+                            <div class="overlay-tile bg-black transition-all" data-index="7"></div>
+                            <div class="overlay-tile bg-black transition-all" data-index="8"></div>
+                        </div>
+                    </div>
+
+                    <!-- Input Form -->
+                    <form id="tebakGambarForm" class="space-y-4 sm:space-y-4 mb-4">
+                        <input type="text" id="inputTebakGambar" placeholder="What's in the picture?" required
+                            class="w-full p-4 sm:p-4 rounded-2xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none text-lg sm:text-lg font-semibold text-center">
+                        <button type="submit"
+                            class="w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover">
+                            <span class="text-xl sm:text-xl mr-2">✅</span>Submit Answer
+                        </button>
+                    </form>
+
+                    <!-- Hint Button -->
+                    <button onclick="revealImageTile()" id="revealImageBtn"
+                        class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-4">
+                        <span class="text-xl mr-2">🔍</span>Open Tile (-20 Coin)
+                    </button>
+
+                    <!-- Back Button -->
+                    <button onclick="returnToMenu()"
+                        class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 rounded-2xl font-bold btn-hover">
+                        <span class="text-xl mr-2">🔙</span>Back to menu
                     </button>
                 </div>
             </div>
         </div>
+        <div id="debugTerminal" class="debug-terminal mx-auto justify-center items-center flex-1 flex flex-col"
+            style="display: none;">
+            <div class="debug-header">
+                <span>🐛 Debug Terminal</span>
+                <button id="clearDebug" class="debug-btn">Clear</button>
+                <button id="closeDebug" class="debug-btn">×</button>
+            </div>
+            <div id="debugContent" class="debug-content text-xl text-center flex-1 flex items-center justify-center">
+            </div>
+        </div>
     </div>
+    <!-- audio -->
+    <audio id="waterSplash" src="/asset/soundEffect/splash.m4a" preload="auto"></audio>
+    <audio id="Bubbles" src="/asset/soundEffect/Bubbles.m4a" preload="auto"></audio>
+    <audio id="Sparkling" src="/asset/soundEffect/Sparkling.m4a" preload="auto"></audio>
+    <audio id="eat" src="/asset/soundEffect/eat.MP3" preload="auto"></audio>
+    <audio id="error" src="/asset/soundEffect/error.MP3" preload="auto"></audio>
+    <audio id="success" src="/asset/soundEffect/success.MP3" preload="auto"></audio>
+    <audio id="tick" src="/asset/soundEffect/tick.m4a" preload="auto"></audio>
+    <audio id="ding" src="/asset/soundEffect/ding.MP3" preload="auto"></audio>
 
-    <!-- Load hanya index.js dan main.js sebagai module -->
-    <script src="index.js"></script>
-    <script src="/src/components.js"></script>
-    <script src="/src/condition.js"></script>
-    <script src="/src/routing.js"></script>
-    <script src="/src/Game/contextHandler.js"></script>
-    <script src="/src/Game/tebakKata.js"></script>
+    <!-- Load XState library -->
+    <script src="https://unpkg.com/xstate@4/dist/xstate.js"></script>
 
+    <!-- Load semua script dengan type module -->
+    <script type="module" src="index.js"></script>
+    <script type="module" src="/src/components.js"></script>
+    <script type="module" src="/src/condition.js"></script>
+    <script type="module" src="/src/stateMachine.js"></script>
+    <script type="module" src="/src/stateManager.js"></script>
+    <script type="module" src="/src/routing.js"></script>
+    <script type="module" src="/src/Game/contextHandler.js"></script>
+    <script type="module" src="/src/Game/tebakKata.js"></script>
+    <script type="module" src="/src/Game/tebakGambar.js"></script>
+    <script type="module" src="/src/Menu/soapMenu.js"></script>
+    <script type="module" src="/src/Menu/foodMenu.js"></script>
+
+
+    <!-- Debug Toggle Button -->
+    <button id="debugToggle" class="debug-toggle">🐛</button>
+    <script>
+        // Debug Terminal Functions
+        function addDebugLog(message, type = 'info') {
+            const debugContent = document.getElementById('debugContent');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `debug-log ${type}`;
+            logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+            debugContent.appendChild(logEntry);
+            debugContent.scrollTop = debugContent.scrollHeight;
+        }
+
+        // Debug Terminal Event Listeners
+        document.addEventListener('DOMContentLoaded', function () {
+            const debugToggle = document.getElementById('debugToggle');
+            const debugTerminal = document.getElementById('debugTerminal');
+            const closeDebug = document.getElementById('closeDebug');
+            const clearDebug = document.getElementById('clearDebug');
+
+            // Toggle debug terminal
+            debugToggle.addEventListener('click', function () {
+                const isVisible = debugTerminal.style.display !== 'none';
+                debugTerminal.style.display = isVisible ? 'none' : 'block';
+            });
+
+            // Close debug terminal
+            closeDebug.addEventListener('click', function () {
+                debugTerminal.style.display = 'none';
+            });
+
+            // Clear debug logs
+            clearDebug.addEventListener('click', function () {
+                document.getElementById('debugContent').innerHTML = '';
+            });
+        });
+    </script>
 </body>
 
 </html>

@@ -32,3 +32,12 @@ function operateContext(context, value, operator) {
     return;
   }
 }
+
+// Export functions
+export { changeCoin, checkContext, changeContext, operateContext };
+
+// Expose to window for global access
+window.changeCoin = changeCoin;
+window.checkContext = checkContext;
+window.changeContext = changeContext;
+window.operateContext = operateContext;
