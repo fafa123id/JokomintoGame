@@ -169,11 +169,11 @@ const tebakKataSubmit = () => {
       charTebakKata.src = "/asset/char/idle.png";
     }, 2000);
     showMessage("Sorry, your answer is wrong!", "error", 1000, true);
+    document.getElementById("inputTebakKata").value = "";
   }
 };
 
-function backToMainMenu() {
-  sendEvent("BACK");
+function backToMainMenuFromWord() {
   resetTimer();
 }
 document.addEventListener("DOMContentLoaded", function () {
@@ -187,12 +187,11 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 // Export functions
-export { pageTebakKata };
+export { pageTebakKata, backToMainMenuFromWord };
 
 // Expose ke window untuk onclick handlers
 window.pageTebakKata = pageTebakKata;
 window.submitGuess = tebakKataSubmit; // Map submitGuess to tebakKataSubmit
 window.tebakKataSubmit = tebakKataSubmit;
-window.returnToMenu = backToMainMenu;
 window.revealHint = revealHint;
-window.backToMainMenu = backToMainMenu;
+
