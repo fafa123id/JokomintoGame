@@ -1,6 +1,6 @@
 import { sendEvent } from "../stateManager.js";
 import { feedCondition } from "../condition.js";
-import { showMessage, playSoundEffect, showOverlay } from "../components.js";
+import { showMessage, playSoundEffect, showOverlay, hideOverlay } from "../components.js";
 
 // Menu Makanan
 function showMenuMakanan() {
@@ -77,6 +77,7 @@ function buyFood(jenisMakanan) {
         cost: harga
       }
     });
+    hideOverlay();
   }, 2000);
   
   // Tampilkan pesan sukses
