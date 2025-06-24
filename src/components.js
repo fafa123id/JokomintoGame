@@ -86,6 +86,8 @@ function showOverlay(param = "normal.gif") {
 // Fungsi untuk menyembunyikan overlay mandi
 function hideOverlay() {
   const overlay = document.getElementById("overlay");
+  const gif = document.getElementById("overlaygif");
+  gif.src = "";
   overlay.classList.add("hidden");
 }
 

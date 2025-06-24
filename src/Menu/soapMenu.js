@@ -1,4 +1,5 @@
-import { showMessage, playSoundEffect, showOverlay } from "../components.js";
+import { showMessage, playSoundEffect, showOverlay, hideOverlay } from "../components.js";
+
 import { sendEvent } from "../stateManager.js";
 
 //Bath Menu
@@ -68,6 +69,7 @@ function buySabun(jenisSabun) {
         cost: harga
       }
     });
+    hideOverlay();
   }, 2000);
 
   // Tampilkan pesan sukses
