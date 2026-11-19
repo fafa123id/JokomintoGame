@@ -6,6 +6,7 @@ services:
     env_file: .env
     environment:
       NODE_ENV: production
+      PORT: "3005"
       DB_FILE: /data/game.db
       IMAGE_CACHE_DIR: /data/image-cache
       TRUST_PROXY: "1"
@@ -45,35 +46,8 @@ services:
       - internal
       - shared-network
 
-  caddy:
-    image: caddy:2-alpine
-    profiles: [caddy]
-    restart: unless-stopped
-    depends_on:
-      app:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      DOMAIN: ${DOMAIN:-localhost}
-    volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]
-    security_opt:
-      - no-new-privileges:true
-    logging:
-      driver: json-file
-      options: { max-size: "10m", max-file: "3" }
-    networks: [internal]
-
 volumes:
   app-data:
-  caddy-data:
-  caddy-config:
 
 networks:
   internal:
