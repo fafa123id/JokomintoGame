@@ -24,14 +24,21 @@ pipeline {
 
   stages {
     stage('Test') {
-      agent {
-        docker { image 'node:24-alpine'; reuseNode true }
-      }
-      steps {
-        sh 'npm ci --ignore-scripts --cache .npm-cache'
-        sh 'npm audit --omit=dev --audit-level=high --cache .npm-cache'
-        sh 'npm test'
-      }
+        steps {
+            sh '''
+                set -e
+    
+                docker run --rm \
+                    -v "$WORKSPACE:/app" \
+                    -w /app \
+                    node:24-alpine \
+                    sh -c "
+                        npm ci --ignore-scripts --cache .npm-cache &&
+                        npm audit --omit=dev --audit-level=high --cache .npm-cache &&
+                        npm test
+                    "
+            '''
+        }
     }
 
     stage('Build Image') {
