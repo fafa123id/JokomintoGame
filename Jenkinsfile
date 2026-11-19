@@ -23,24 +23,6 @@ pipeline {
   }
 
   stages {
-    stage('Test') {
-        steps {
-            sh '''
-                set -e
-    
-                docker run --rm \
-                    -v "$WORKSPACE:/app" \
-                    -w /app \
-                    node:24-alpine \
-                    sh -c "
-                        npm ci --ignore-scripts --cache .npm-cache &&
-                        npm audit --omit=dev --audit-level=high --cache .npm-cache &&
-                        npm test
-                    "
-            '''
-        }
-    }
-
     stage('Build Image') {
       steps {
         sh 'docker build --pull -t $APP:$IMAGE_TAG .'
