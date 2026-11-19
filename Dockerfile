@@ -8,7 +8,7 @@ RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production \
-    PORT=3000 \
+    PORT=3005 \
     DB_FILE=/data/game.db \
     IMAGE_CACHE_DIR=/data/image-cache
 
@@ -26,7 +26,7 @@ COPY asset ./asset
 COPY server ./server
 
 USER node
-EXPOSE 3000
+EXPOSE 3005
 VOLUME ["/data"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
