@@ -104,7 +104,7 @@ class EventHandler {
           debounceTime(100) // Prevent double-click
         );
 
-        this.safeSubscribe(startGame$, () => sendEvent("START"), "StartGame");
+        this.safeSubscribe(startGame$, () => window.startGame(), "StartGame");
       }
 
       // Home Page Stream dengan safe handling untuk empty NodeList

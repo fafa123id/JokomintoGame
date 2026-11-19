@@ -1,0 +1,13 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	request_body {
+		max_size 64KB
+	}
+
+	header {
+		-Server
+	}
+
+	reverse_proxy app:3000
+}

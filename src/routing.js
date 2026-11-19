@@ -1,3 +1,4 @@
+import { requireSession } from "./account.js";
 import { sendEvent } from "./stateManager.js";
 import { pageTebakKata } from "./Game/tebakKata.js";
 import { pageTebakGambar } from "./Game/tebakGambar.js";
@@ -34,8 +35,8 @@ function HomePage() {
 function pageSelectGame() {
   // UI update will be handled by XState state manager
 }
-function startGame() {
-  sendEvent("START");
+async function startGame() {
+  if (await requireSession()) sendEvent("START");
 }
 // Export functions dan expose ke global scope
 export {

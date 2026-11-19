@@ -147,47 +147,13 @@ export const machine = createMachine({
     resetTimerGame: function (context, event) {
         backToMainMenuFromWord();
         returnToMenuFromImage();
+        window.leaveTicTacToe?.();
     },
-    increaseHunger: function (context, event) {
-      const currentHunger = parseInt(localStorage.getItem("hunger")) || 0;
-      const newHunger = Math.min(currentHunger + 10, 100);
-      localStorage.setItem("hunger", newHunger.toString());
-      updateContext();
-    },
-    increaseMood: function (context, event) {
-      const moodIncrease = event.params?.mood || 40;
-      const currentMood = parseInt(localStorage.getItem("mood")) || 0;
-      const newMood = Math.min(currentMood + moodIncrease, 100);
-      localStorage.setItem("mood", newMood.toString());
-      updateContext();
-    },
-    increaseCoin: function (context, event) {
-      const coinIncrease = event.params?.coin || 30;
-      const currentCoin = parseInt(localStorage.getItem("coin")) || 0;
-      const newCoin = currentCoin + coinIncrease;
-      localStorage.setItem("coin", newCoin.toString());
-      updateContext();
-    },
-    increaseHygiene: function (context, event) {
-      const hygieneIncrease = event.params?.hygiene || 50;
-      const currentHygiene = parseInt(localStorage.getItem("hygiene")) || 0;
-      const newHygiene = Math.min(currentHygiene + hygieneIncrease, 100);
-      localStorage.setItem("hygiene", newHygiene.toString());
-      updateContext();
-    },
-    decreaseCoin: function (context, event) {
-      const cost = event.params?.cost || 0;
-      const currentCoin = parseInt(localStorage.getItem("coin")) || 0;
-      const newCoin = Math.max(currentCoin - cost, 0);
-      localStorage.setItem("coin", newCoin.toString());
-      updateContext();
-    },
-    decreaseHunger: function (context, event) {
-      const hungerDecrease = event.params?.hunger || 30;
-      const currentHunger = parseInt(localStorage.getItem("hunger")) || 0;
-      const newHunger = Math.max(currentHunger - hungerDecrease, 0);
-      localStorage.setItem("hunger", newHunger.toString());
-      updateContext();
-    },
+    increaseHunger: () => updateContext(),
+    increaseMood: () => updateContext(),
+    increaseCoin: () => updateContext(),
+    increaseHygiene: () => updateContext(),
+    decreaseCoin: () => updateContext(),
+    decreaseHunger: () => updateContext(),
   },
 });

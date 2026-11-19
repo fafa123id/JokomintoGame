@@ -1,3 +1,4 @@
+import { api } from "../api.js";
 import { showMessage, playSoundEffect, showOverlay, hideOverlay } from "../components.js";
 
 import { sendEvent } from "../stateManager.js";
@@ -9,76 +10,40 @@ function showMenuSabun() {
   sendEvent("BATHE");
 }
 
-// Fungsi untuk membeli sabun
-function buySabun(jenisSabun) {
-  const currentCoin = parseInt(localStorage.getItem("coin")) || 0;
-  let harga, hygieneBonus, namaSabun, sound, overlay;
+const SOAP_FX = {
+  biasa: { sound: "waterSplash", overlay: "normal.gif" },
+  wangi: { sound: "Bubbles", overlay: "fragrance.gif" },
+  premium: { sound: "Sparkling", overlay: "premium.gif" },
+};
 
-  // Tentukan harga dan bonus berdasarkan jenis sabun
-  switch (jenisSabun) {
-    case "biasa":
-      harga = 0;
-      hygieneBonus = 30;
-      namaSabun = "Normal Soap";
-      sound = "waterSplash";
-      overlay = "normal.gif";
-      break;
-    case "wangi":
-      harga = 25;
-      hygieneBonus = 50;
-      namaSabun = "Fragrance Soap";
-      sound = "Bubbles";
-      overlay = "fragrance.gif";
-      break;
-    case "premium":
-      harga = 50;
-      hygieneBonus = 80;
-      namaSabun = "Premium Soap";
-      sound = "Sparkling";
-      overlay = "premium.gif";
-      break;
-    default:
-      showMessage("Soap doesn't valid!", "error", 2000);
-      return;
-  }
-
-  // Cek apakah coin cukup
-  if (currentCoin < harga) {
-    showMessage(
-      `Insufficient coin! needs ${harga} coin for ${namaSabun}`,
-      "error",
-      2000,
-      true
-    );
+let buying = false;
+async function buySabun(jenisSabun) {
+  const fx = SOAP_FX[jenisSabun];
+  if (!fx) {
+    showMessage("Soap doesn't valid!", "error", 2000);
     return;
   }
-  
-  // Menampilkan overlay
-  showOverlay(overlay);
-  //Play sound
-  playSoundEffect(sound);
-  
-  // Send XState events dengan parameter yang benar
+  if (buying) return;
+
+  buying = true;
+  const res = await api("/api/pet/bathe", { soap: jenisSabun });
+  buying = false;
+  if (res.error) {
+    showMessage(res.error, "error", 2000, true);
+    return;
+  }
+
+  const { name, cost, hygiene } = res.soap;
+  showOverlay(fx.overlay);
+  playSoundEffect(fx.sound);
   sendEvent("SOAP_SELECTED");
-  
-  // Delay untuk animasi, lalu kirim FINISH_BATH
+
   setTimeout(() => {
-    sendEvent("FINISH_BATH", {
-      params: {
-        hygiene: hygieneBonus,
-        cost: harga
-      }
-    });
+    sendEvent("FINISH_BATH");
     hideOverlay();
   }, 2000);
 
-  // Tampilkan pesan sukses
-  showMessage(
-    `Byur-byur... ${namaSabun} used (+${hygieneBonus} hygiene, -${harga} coin)`,
-    "success",
-    2000
-  );
-  
+  showMessage(`Byur-byur... ${name} used (+${hygiene} hygiene, -${cost} coin)`, "success", 2000);
 }
 
 // Export functions

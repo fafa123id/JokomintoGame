@@ -6,26 +6,18 @@ import {
   wakeUp,
 } from "./src/stateManager.js";
 
-import { updateChar, updateContext } from "./src/components.js";
 import { initializeEventHandler } from "./src/eventHandler.js";
 
+import { initAccount } from "./src/account.js";
+import { initLeaderboard } from "./src/leaderboard.js";
+import { initPet } from "./src/pet.js";
+import { applyMotionClass, initMotionToggle } from "./src/motion.js";
+import { initUi3d } from "./src/ui3d.js";
+import { initSkins } from "./src/skins.js";
+import { initTicTacToe } from "./src/Game/tictactoe.js";
+
 function init() {
-  let hygiene = localStorage.getItem("hygiene");
-  if (hygiene === null) {
-    localStorage.setItem("hygiene", "100");
-  }
-  let hunger = localStorage.getItem("hunger");
-  if (hunger === null) {
-    localStorage.setItem("hunger", "0");
-  }
-  let mood = localStorage.getItem("mood");
-  if (mood === null) {
-    localStorage.setItem("mood", "100");
-  }
-  let coin = localStorage.getItem("coin");
-  if (coin === null) {
-    localStorage.setItem("coin", "50");
-  }
+  ["hygiene", "hunger", "mood", "coin", "word"].forEach((k) => localStorage.removeItem(k));
 
   // Initialize XState machine
   initializeStateMachine();
@@ -34,9 +26,14 @@ function init() {
 init(); //inisialisasi context
 
 document.addEventListener("DOMContentLoaded", function () {
-  //function untuk mengupdate context ketika halaman pertama kali dimuat
-  updateChar();
-  updateContext();
+  applyMotionClass();
+  initPet();
+  initAccount();
+  initLeaderboard();
+  initSkins();
+  initMotionToggle();
+  initUi3d();
+  initTicTacToe();
   
   // Initialize RxJS Event Handler
   initializeEventHandler();

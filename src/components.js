@@ -1,3 +1,5 @@
+import { state, refreshPet } from "./api.js";
+import { setExpression } from "./pet.js";
 // Global variable untuk menyimpan timeout reference
 let messageTimeout = null;
 
@@ -58,7 +60,7 @@ function playSoundEffect(soundId) {
 
   audio = soundEffect;
   audio.currentTime = 0; // Mulai dari detik ke-0
-  audio.play().then(() => {
+  audio.play().catch(() => {}).then(() => {
     // Stop setelah 2 detik
     timeoutId = setTimeout(() => {
       audio.pause();
@@ -95,10 +97,8 @@ let overlayTimeout = null;
 
 function updateContext() {
   //function untuk update context, misal hygiene, hunger, mood, coin dan menampilkan ke halaman
-  let coin = parseInt(localStorage.getItem("coin"));
-  let hygiene = parseInt(localStorage.getItem("hygiene"));
-  let hunger = parseInt(localStorage.getItem("hunger"));
-  let mood = parseInt(localStorage.getItem("mood"));
+  if (!state.pet) return;
+  const { coin, hygiene, hunger, mood } = state.pet;
 
   // Update nilai teks
   document.getElementById("hygiene-value").innerHTML = hygiene;
@@ -157,9 +157,8 @@ function updateBarColors(hygiene, hunger, mood) {
 }
 
 function updateChar() {
-  let mood = parseInt(localStorage.getItem("mood"));
-  let hygiene = parseInt(localStorage.getItem("hygiene"));
-  let hunger = parseInt(localStorage.getItem("hunger"));
+  if (!state.pet) return;
+  const { mood, hygiene, hunger } = state.pet;
   let hungerBubble = document.getElementById("hungerBubble");
   let hygieneBubble = document.getElementById("hygieneBubble");
   let moodBubble = document.getElementById("moodBubble");
@@ -171,7 +170,7 @@ function updateChar() {
 
   // Check if in sleep state
   if (gameService && gameService.state.value === "sleep") {
-    charmain.src = "/asset/char/sleep.png";
+    setExpression(charmain, "sleep");
     // Add click listener to wake up
     charmain.onclick = () => {
       wakeUp();
@@ -181,10 +180,10 @@ function updateChar() {
   }
 
   if (mood <= 30) {
-    charmain.src = "/asset/char/sad.png";
+    setExpression(charmain, "sad");
     moodBubble.style.display = "block";
   } else {
-    charmain.src = "/asset/char/happy.png";
+    setExpression(charmain, "happy");
     moodBubble.style.display = "none";
   }
 
@@ -217,35 +216,8 @@ const updateStatus = () => {
     updateContext();
   }, 10);
 
-  // Degradasi stats setiap 5 detik
   const degradationInterval = setInterval(() => {
-    let hygiene = parseInt(localStorage.getItem("hygiene") ?? "100");
-    let hunger = parseInt(localStorage.getItem("hunger") ?? "0");
-    let mood = parseInt(localStorage.getItem("mood") ?? "100");
-
-    // Degradasi hygiene
-    if (hygiene > 0) {
-      hygiene -= 4;
-      localStorage.setItem(
-        "hygiene",
-        Math.max(0, Math.min(100, hygiene)).toString()
-      );
-    }
-
-    // Degradasi hunger (naik karena semakin lapar)
-    if (hunger < 100) {
-      hunger += 5;
-      localStorage.setItem(
-        "hunger",
-        Math.max(0, Math.min(100, hunger)).toString()
-      );
-    }
-
-    // Degradasi mood
-    if (mood > 0) {
-      mood -= 6;
-      localStorage.setItem("mood", Math.max(0, Math.min(100, mood)).toString());
-    }
+    if (state.user) refreshPet();
   }, 8000);
 
   // Cleanup function
@@ -439,9 +411,8 @@ updateContext = function() {
   if (originalUpdateContext) originalUpdateContext();
   
   // Add enhanced animations
-  const mood = parseInt(localStorage.getItem("mood")) || 0;
-  const hygiene = parseInt(localStorage.getItem("hygiene")) || 0;
-  const hunger = parseInt(localStorage.getItem("hunger")) || 0;
+  if (!state.pet) return;
+  const { mood, hygiene, hunger } = state.pet;
   
   animateProgressBar('mood-bar', mood);
   animateProgressBar('hygiene-bar', hygiene);

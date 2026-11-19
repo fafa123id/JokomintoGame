@@ -1,3 +1,6 @@
+import { state } from "./api.js";
+import { showMessage } from "./components.js";
+
 //kondisi untuk bermain
 function playCondition() {
   if (mustHygiene() && mustFeed()) {
@@ -15,7 +18,7 @@ function feedCondition() {
 }
 
 function mustHygiene() {
-  let hygiene = parseInt(localStorage.getItem("hygiene"));
+  const hygiene = state.pet?.hygiene ?? 0;
   if (hygiene <= 30) {
     showMessage(
       "Your hygiene is low, please bath your pet",
@@ -29,7 +32,7 @@ function mustHygiene() {
 }
 
 function mustFeed() {
-  let hunger = parseInt(localStorage.getItem("hunger"));
+  const hunger = state.pet?.hunger ?? 100;
   if (hunger >= 70) {
     showMessage(
       "Your hunger is high, please feed your pet",

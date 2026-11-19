@@ -1,290 +1,191 @@
-// Game Tebak Gambar - Simple Version
-let gameImages = [];
-let currentImage = null;
-let revealedTiles = [];
+import { sendEvent } from "../stateManager.js";
+import { api } from "../api.js";
+import { showMessage, playSoundEffect, stopAudio } from "../components.js";
+import { createPointsTicker, scoreSummary } from "./points.js";
+import { celebrate, sulk } from "../pet.js";
+
+let session = null;
 let imageTimer = null;
 let timeLeft = 30;
+let busy = false;
 const charTebakGambar = document.getElementById("charTebakGambar");
-import { sendEvent } from "../stateManager.js";
-import { showMessage, playSoundEffect, stopAudio } from "../components.js";
-import { changeCoin } from "./contextHandler.js";
+const points = createPointsTicker("imagePoints", "imageCoins");
+
+function updatePoints(next) {
+  if (!next) return;
+  points.update(next);
+  if (next.visibility !== undefined) {
+    document.getElementById("imageVisibility").textContent = `${Math.round(next.visibility * 100)}%`;
+  }
+}
+
+function setFormEnabled(enabled) {
+  document.getElementById("inputTebakGambar").disabled = !enabled;
+  document.getElementById("tebakGambarForm").querySelector('button[type="submit"]').disabled = !enabled;
+  document.getElementById("revealImageBtn").disabled = !enabled;
+}
 
 async function pageTebakGambar() {
-  // Kirim event XState untuk memulai game
   sendEvent("GAME_SELECTED");
-  // Reset character image
   charTebakGambar.src = "/asset/char/idle.png";
-  // Mulai game tebak gambar
   document.getElementById("menuGame").style.display = "none";
   document.getElementById("tebakGambar").style.display = "flex";
-
-  // Disable form saat loading gambar
-  document.getElementById("inputTebakGambar").disabled = true;
-  document
-    .getElementById("tebakGambarForm")
-    .querySelector('button[type="submit"]').disabled = true;
-  document.getElementById("revealImageBtn").disabled = true;
-
-  // Show loading state
+  setFormEnabled(false);
   document.getElementById("gameImage").src = "";
   document.getElementById("gameImage").alt = "Loading image...";
   document.getElementById("imageTime").innerHTML = "Loading...";
-
-  // Reset timer
   resetImageTimer();
 
-  // Load game images dan mulai game
-  try {
-    await loadGameImages();
-    await startImageGame();
+  const res = await api("/api/game/start", { type: "image" });
+  if (res.error) {
+    showMessage(res.error, "error", 2000, true);
+    sendEvent("BACK");
+    return;
+  }
+  session = res;
+  timeLeft = res.timeLeft;
+  updatePoints(res.points);
+  document.getElementById("imageCredit").classList.toggle("hidden", !res.credit);
 
-    // Enable form setelah loading selesai
-    document.getElementById("inputTebakGambar").disabled = false;
-    document
-      .getElementById("tebakGambarForm")
-      .querySelector('button[type="submit"]').disabled = false;
-    document.getElementById("revealImageBtn").disabled = false;
-    startImageTimer(); // Mulai timer setelah gambar loaded
+  try {
+    updateTiles([]);
+    await loadImage(res.imageUrl);
+    updateTiles(session.revealed);
+    document.getElementById("tebakGambar").classList.remove("hidden");
+    document.getElementById("optionButton").classList.add("hidden");
+    resetImageForm();
+    playSoundEffect("ding");
+    startImageTimer();
   } catch (error) {
     console.error("Failed to load game:", error);
     showMessage("Failed to load game. Please try again.", "error");
-    sendEvent("BACK"); // Kembali ke idle jika error
+    sendEvent("BACK");
   }
 }
 
-// Load game images data
-async function loadGameImages() {
-  try {
-    const response = await fetch("/asset/gameImages.json");
-    const data = await response.json();
-    gameImages = data.images;
-  } catch (error) {
-    console.error("Error loading game images:", error);
-    throw new Error("Failed to load game images");
-  }
-}
-
-// Start the image guessing game
-async function startImageGame() {
-  if (gameImages.length === 0) {
-    throw new Error("No images available!");
-  }
-
-  // Pick random image
-  const randomIndex = Math.floor(Math.random() * gameImages.length);
-  currentImage = gameImages[randomIndex];
-
-  // Reset game state
-  revealedTiles = [...currentImage.revealPattern];
-  timeLeft = 30;
-
-  // Update UI
-  await updateImageDisplay();
-  resetImageForm();
-
-  // Pastikan container terlihat
-  document.getElementById("tebakGambar").style.display = "flex";
-  document.getElementById("tebakGambar").classList.remove("hidden");
-  document.getElementById("optionButton").classList.add("hidden");
-  document.getElementById("menuGame").style.display = "none";
-
-  playSoundEffect("ding");
-}
-
-// Reset timer function
-const resetImageTimer = () => {
-  timeLeft = 30;
-  document.getElementById("inputTebakGambar").value = "";
-  // Clear timer yang sedang berjalan jika ada
-  clearTimer();
-};
-
-// Update image display and grid overlay
-async function updateImageDisplay() {
-  const imageElement = document.getElementById("gameImage");
-
-  // Pastikan currentImage ada dan memiliki path
-  if (!currentImage || !currentImage.path) {
-    throw new Error("Error loading image!");
-  }
-
-  // Return promise untuk memastikan gambar loaded
+function loadImage(url) {
+  const img = document.getElementById("gameImage");
   return new Promise((resolve, reject) => {
-    // Set image source
-    imageElement.src = currentImage.path;
-    imageElement.alt = "Guess this image";
-
-    // Add error handler
-    imageElement.onerror = function () {
-      reject(new Error("Image failed to load!"));
-    };
-
-    imageElement.onload = function () {
-      // Update grid overlay setelah gambar loaded
-      const overlayTiles = document.querySelectorAll(".overlay-tile");
-      overlayTiles.forEach((tile, index) => {
-        if (revealedTiles.includes(index)) {
-          tile.style.opacity = "0";
-        } else {
-          tile.style.opacity = "1";
-        }
-      });
-
-      resolve();
-    };
+    img.onload = resolve;
+    img.onerror = () => reject(new Error("Image failed to load!"));
+    img.alt = "Guess this image";
+    img.src = url;
   });
 }
 
-// Start timer
+function updateTiles(revealed) {
+  document.querySelectorAll(".overlay-tile").forEach((tile, index) => {
+    tile.style.opacity = revealed.includes(index) ? "0" : "1";
+  });
+}
+
+const resetImageTimer = () => {
+  timeLeft = 30;
+  document.getElementById("inputTebakGambar").value = "";
+  clearTimer();
+};
+
 function startImageTimer() {
-  // Clear existing timer
-  if (imageTimer) {
-    clearInterval(imageTimer);
-  }
-
-  // Update timer display
+  clearTimer();
   document.getElementById("imageTime").textContent = timeLeft;
-
-  imageTimer = setInterval(() => {
+  imageTimer = setInterval(async () => {
     timeLeft--;
-    document.getElementById("imageTime").textContent = timeLeft;
+    points.tick();
+    document.getElementById("imageTime").textContent = Math.max(0, timeLeft);
     playSoundEffect("tick");
     if (timeLeft <= 0) {
-      clearInterval(imageTimer);
-      stopAudio();
-      timeUp();
+      clearTimer();
+      const res = session ? await api("/api/game/end", { sessionId: session.sessionId }) : {};
+      timeUp(res.answer);
     }
   }, 1000);
 }
 
-// Handle time up
-function timeUp() {
-  showMessage(
-    `Time up! The answer is ${currentImage.answer}`,
-    "error",
-    3000,
-    true
-  );
-
-  // Kirim event LOSE ke XState
+function timeUp(answer) {
+  clearTimer();
+  session = null;
+  showMessage(`Time up!${answer ? ` The answer is ${answer}` : ""}`, "error", 3000, true);
   sendEvent("LOSE");
-
-  // Disable form
-  document.getElementById("inputTebakGambar").disabled = true;
-  document.getElementById("revealImageBtn").disabled = true;
+  setFormEnabled(false);
   charTebakGambar.src = "/asset/char/wrong.png";
 }
 
-// Reveal a random hidden tile
-function revealImageTile() {
-  const currentCoin = parseInt(localStorage.getItem("coin")) || 0;
-
-  if (currentCoin < 20) {
-    showMessage("Not enough coins! Need 20 coins", "error", 2000, true);
+async function revealImageTile() {
+  if (!session || busy) return;
+  busy = true;
+  const res = await api("/api/game/hint", { sessionId: session.sessionId });
+  busy = false;
+  if (res.result === "timeout") return timeUp(res.answer);
+  if (res.error) {
+    showMessage(res.error, "error", 2000, true);
     return;
   }
-
-  // Find hidden tiles
-  const hiddenTiles = [];
-  for (let i = 0; i < 9; i++) {
-    if (!revealedTiles.includes(i)) {
-      hiddenTiles.push(i);
-    }
-  }
-
-  if (hiddenTiles.length === 0) {
-    showMessage("All tail have been opened!", "error", 2000, true);
-    return;
-  }
-
-  // Reveal random hidden tile
-  const randomIndex = Math.floor(Math.random() * hiddenTiles.length);
-  const tileToReveal = hiddenTiles[randomIndex];
-  revealedTiles.push(tileToReveal);
-
-  // Deduct coin
-  localStorage.setItem("coin", currentCoin - 20);
-
-  // Update display
-  updateImageDisplay();
-  showMessage("Tail opened! -20 coin", "success", 1500);
+  session.revealed = res.revealed;
+  updatePoints(res.points);
+  updateTiles(session.revealed);
+  showMessage("Tile opened! -20 coin", "success", 1500);
   playSoundEffect("ding");
 }
 
-// Handle form submission
-document
-  .getElementById("tebakGambarForm")
-  .addEventListener("submit", function (e) {
-    e.preventDefault();
-    checkImageAnswer();
-  });
+document.getElementById("tebakGambarForm").addEventListener("submit", function (e) {
+  e.preventDefault();
+  checkImageAnswer();
+});
 
-// Check player's answer
-function checkImageAnswer() {
-  const playerAnswer = document
-    .getElementById("inputTebakGambar")
-    .value.toLowerCase()
-    .trim();
-  const correctAnswer = currentImage.answer.toLowerCase();
+async function checkImageAnswer() {
+  const input = document.getElementById("inputTebakGambar");
+  const answer = input.value.trim().toLowerCase();
+  if (!session || busy || !answer) return;
 
-  if (playerAnswer === correctAnswer) {
-    charTebakGambar.src = "/asset/char/happy.png";
-    // Clear timer and audio
+  busy = true;
+  const res = await api("/api/game/guess", { sessionId: session.sessionId, answer });
+  busy = false;
+
+  if (res.result === "win") {
+    session = null;
     clearTimer();
-    showMessage(`Correct! +30 coin, +40 mood`, "success", 2000, true);
-    // Kirim event WIN ke XState
-    sendEvent("WIN", {
-      params: {
-        mood: 40,
-        coin: 30,
-      },
-    });
-  } else {
-    // Wrong answer - can continue
-    const currentMood = parseInt(localStorage.getItem("mood")) || 0;
-    localStorage.setItem("mood", Math.max(0, currentMood - 5));
-
-    showMessage("Wrong! try again. -5 mood", "error", 2000, true);
-
+    charTebakGambar.src = "/asset/char/happy.png";
+    celebrate("charTebakGambar", "Yeay, benar! 🎉");
+    showMessage(`Correct! +${res.reward.coin} coin, +${res.reward.mood} mood, ${scoreSummary(res.scoring)}`, "success", 3000, true);
+    sendEvent("WIN");
+  } else if (res.result === "timeout") {
+    timeUp(res.answer);
+  } else if (res.result === "lose") {
+    clearTimer();
+    session = null;
+    setFormEnabled(false);
     charTebakGambar.src = "/asset/char/wrong.png";
+    showMessage(`Too many wrong answers! The answer is ${res.answer}`, "error", 3000, true);
+    sendEvent("LOSE");
+  } else if (res.result === "wrong") {
+    updatePoints(res.points);
+    showMessage(`Wrong! -5 mood, ${res.attemptsLeft} attempt(s) left`, "error", 2000, true);
+    charTebakGambar.src = "/asset/char/wrong.png";
+    sulk("charTebakGambar", "Bukan itu... 😣");
     setTimeout(() => {
       charTebakGambar.src = "/asset/char/idle.png";
     }, 2000);
-    // Clear input for retry
-    document.getElementById("inputTebakGambar").value = "";
-    return;
+    input.value = "";
+  } else if (res.error) {
+    showMessage(res.error, "error", 1500, true);
   }
 }
 
-// Return to main menu
-// Hapus function returnToMenu yang kedua (baris 311-323)
-// Hanya gunakan yang pertama di baris 286
-
 function returnToMenuFromImage() {
-  // Clear timer
   clearTimer();
-
-  // Hide game, show menu
+  if (session) {
+    api("/api/game/end", { sessionId: session.sessionId });
+    session = null;
+  }
   document.getElementById("tebakGambar").classList.add("hidden");
   document.getElementById("optionButton").classList.remove("hidden");
-
-  // Reset form
   resetImageForm();
 }
 
-// Reset form
 function resetImageForm() {
   document.getElementById("inputTebakGambar").value = "";
-  document.getElementById("inputTebakGambar").disabled = false;
-  document.getElementById("revealImageBtn").disabled = false;
+  setFormEnabled(true);
 }
-
-// Modifikasi function tebakGambar untuk menggunakan pageTebakGambar
-function tebakGambar() {
-  pageTebakGambar();
-}
-
-// Hapus function returnToMenu yang duplikat di sini
 
 function clearTimer() {
   if (imageTimer) {
@@ -294,8 +195,6 @@ function clearTimer() {
   }
 }
 
-// Export functions yang diperlukan
 export { pageTebakGambar, revealImageTile, returnToMenuFromImage };
 
-// Expose ke window untuk onclick handlers
 window.revealImageTile = revealImageTile;
