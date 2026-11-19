@@ -59,6 +59,7 @@ pipeline {
           sh '''
             set -e
             install -m 600 "$ENV_FILE" .env
+            docker network inspect shared-network >/dev/null 2>&1 || docker network create shared-network
             PREVIOUS=$(docker inspect --format '{{.Config.Image}}' ${APP}-app-1 2>/dev/null || true)
             echo "$PREVIOUS" > .previous_image
 
