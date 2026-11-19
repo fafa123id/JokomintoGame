@@ -1,14 +1,1549 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Document</title>
-    
+    <title>JokomintoGame - Virtual Pet</title>
+    <link rel="icon" href="/asset/icon.png" type="image/png">
+    <!-- Tambahkan Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Fredoka+One:wght@400&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/src/styles/game.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'sans': ['Inter', 'ui-sans-serif', 'system-ui'],
+                        'game': ['Fredoka One', 'cursive'],
+                    },
+                    animation: {
+                        'bounce-fast': 'bounce 1s infinite',
+                        'pulse-slow': 'pulse 3s infinite',
+                        'wiggle': 'wiggle 1s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        wiggle: {
+                            '0%, 100%': { transform: 'rotate(-3deg)' },
+                            '50%': { transform: 'rotate(3deg)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Modern Gradient Background dengan Animated Elements */
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            background-attachment: fixed;
+            position: relative;
+            overflow-x: hidden;
+        }
+
+        .gradient-bg::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background:
+                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.2) 0%, transparent 50%);
+            pointer-events: none;
+            animation: floatingShapes 20s ease-in-out infinite;
+        }
+
+        @keyframes gradientShift {
+
+            0%,
+            100% {
+                background-position: 0% 50%;
+            }
+
+            50% {
+                background-position: 100% 50%;
+            }
+        }
+
+        @keyframes floatingShapes {
+
+            0%,
+            100% {
+                transform: translate(0, 0) rotate(0deg);
+            }
+
+            33% {
+                transform: translate(30px, -30px) rotate(120deg);
+            }
+
+            66% {
+                transform: translate(-20px, 20px) rotate(240deg);
+            }
+        }
+
+        /* Simple & Elegant Scroll Fix */
+        html {
+            scroll-behavior: smooth;
+        }
+
+        /* Hanya fix scroll di level page, bukan container */
+        body {
+            overflow-y: auto;
+        }
+
+        /* Keep all alignment perfect */
+        .mainScreen {
+            min-height: auto;
+        }
+
+        /* Mobile optimizations */
+        @media (max-width: 640px) {
+            .gradient-bg {
+                background-attachment: scroll;
+            }
+
+            body {
+                overflow-x: hidden;
+            }
+
+            /* Larger touch targets for mobile */
+            button {
+                min-height: 48px;
+            }
+
+            /* Better spacing for mobile */
+            .space-y-4>*+* {
+                margin-top: 1.25rem;
+            }
+        }
+
+        /* Modern Glassmorphism Cards */
+        .card-shadow {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.1),
+                0 4px 16px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card-shadow:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-4px);
+            box-shadow:
+                0 20px 40px rgba(0, 0, 0, 0.15),
+                0 8px 24px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        }
+
+        /* Premium Button Styles */
+        .btn-hover {
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-hover::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.6s;
+        }
+
+        .btn-hover:hover::before {
+            left: 100%;
+        }
+
+        .btn-hover:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow:
+                0 15px 35px rgba(0, 0, 0, 0.2),
+                0 5px 15px rgba(0, 0, 0, 0.1);
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+
+        .btn-hover:active {
+            transform: translateY(-1px) scale(1.01);
+            transition: all 0.1s;
+        }
+
+        /* Prevent button hover on mobile */
+        @media (max-width: 640px) {
+            .btn-hover:hover {
+                transform: none;
+            }
+        }
+
+        /* Enhanced Status Bar */
+        .stat-bar {
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+            transition: all 0.3s ease;
+        }
+
+        .stat-bar:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.4);
+            transform: translateY(-2px);
+            box-shadow:
+                0 12px 40px rgba(0, 0, 0, 0.15),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
+        }
+
+        /* Animated Progress Bars */
+        .progress-bar {
+            position: relative;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .progress-bar::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+
+        @keyframes shimmer {
+            0% {
+                left: -100%;
+            }
+
+            100% {
+                left: 100%;
+            }
+        }
+
+        .progress-fill {
+            position: relative;
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow:
+                0 2px 8px rgba(0, 0, 0, 0.1),
+                inset 0 1px 0 rgba(255, 255, 255, 0.3);
+        }
+
+        /* Floating particles untuk status indicators */
+        .status-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: floatParticle 3s infinite ease-in-out;
+        }
+
+        @keyframes floatParticle {
+
+            0%,
+            100% {
+                transform: translateY(0) scale(1);
+                opacity: 0.6;
+            }
+
+            50% {
+                transform: translateY(-20px) scale(1.2);
+                opacity: 1;
+            }
+        }
+
+        /* Better readability */
+        @media (max-width: 640px) {
+            .leading-relaxed {
+                line-height: 1.6;
+            }
+        }
+
+        /* Status Bubbles */
+        .status-bubble {
+            position: absolute;
+            top: -45px;
+            z-index: 10;
+            animation: bounce-bubble 2s infinite;
+        }
+
+        .bubble-content {
+            background: rgba(0, 0, 0, 0.95);
+            backdrop-filter: blur(10px);
+            border: 2px solid #000000;
+            border-radius: 20px;
+            padding: 8px 12px;
+            font-size: 18px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 40px;
+            min-height: 40px;
+        }
+
+        /* Posisi Bubble */
+        .bubble-left {
+            left: -10px;
+        }
+
+        .bubble-center {
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .bubble-right {
+            right: -10px;
+        }
+
+        /* Bubble Tails (Ekor Bubble) */
+        .bubble-tail {
+            position: absolute;
+            top: 100%;
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 10px solid rgba(0, 0, 0, 0.95);
+        }
+
+        .bubble-tail-left {
+            left: 15px;
+        }
+
+        .bubble-tail-center {
+            left: 50%;
+            transform: translateX(-50%);
+        }
+
+        .bubble-tail-right {
+            right: 15px;
+        }
+
+        /* Animasi Bounce */
+        @keyframes bounce-bubble {
+
+            0%,
+            20%,
+            50%,
+            80%,
+            100% {
+                transform: translateY(0);
+            }
+
+            40% {
+                transform: translateY(-8px);
+            }
+
+            60% {
+                transform: translateY(-4px);
+            }
+        }
+
+        /* Untuk bubble center, gabungkan dengan translateX */
+        .bubble-center {
+            animation: bounce-bubble-center 2s infinite;
+        }
+
+        @keyframes bounce-bubble-center {
+
+            0%,
+            20%,
+            50%,
+            80%,
+            100% {
+                transform: translateX(-50%) translateY(0);
+            }
+
+            40% {
+                transform: translateX(-50%) translateY(-8px);
+            }
+
+            60% {
+                transform: translateX(-50%) translateY(-4px);
+            }
+        }
+
+        .sleep-mode {
+            filter: brightness(0.3) blur(2px);
+            transition: all 0.5s ease-in-out;
+        }
+
+        .sleep-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(5px);
+        }
+
+        .sleep-content {
+            text-align: center;
+            color: white;
+            padding: 2rem;
+            border-radius: 1rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        /* Enhanced Debug Terminal Styles */
+        .debug-terminal {
+            position: flex;
+            top: 50px;
+            right: 20px;
+            width: 400px;
+            height: 300px;
+            background: rgba(30, 30, 30, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            z-index: 900;
+            font-family: 'Courier New', monospace;
+            box-shadow:
+                0 8px 32px rgba(0, 0, 0, 0.3),
+                0 4px 16px rgba(0, 0, 0, 0.2),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .debug-terminal:hover {
+            transform: translateY(-2px);
+            box-shadow:
+                0 12px 40px rgba(0, 0, 0, 0.4),
+                0 6px 20px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.15);
+        }
+
+        .debug-header {
+            background: #333;
+            color: #fff;
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 6px 6px 0 0;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .debug-btn {
+            background: #555;
+            color: #fff;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-left: 5px;
+        }
+
+        .debug-btn:hover {
+            background: #666;
+        }
+
+        .debug-content {
+            height: calc(100% - 40px);
+            overflow-y: auto;
+            padding: 10px;
+            color: #00ff00;
+            font-size: 12px;
+            line-height: 1.4;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .debug-toggle {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #333;
+            color: #fff;
+            border: 2px solid #555;
+            cursor: pointer;
+            font-size: 20px;
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .debug-toggle:hover {
+            background: #555;
+        }
+
+        .debug-log {
+            margin-bottom: 5px;
+            padding: 2px 0;
+        }
+
+        .debug-log.transition {
+            color: #00ff00;
+        }
+
+        .debug-log.error {
+            color: #ff4444;
+        }
+
+        .debug-log.info {
+            color: #4488ff;
+        }
+
+        .debug-log.timestamp {
+            color: #888;
+            font-size: 10px;
+        }
+    </style>
+    </style>
 </head>
-<body>
-    <h1>Welcome to My Page</h1>
-    <p>This is a simple HTML document.</p>
-    <script src="index.js"></script>
 </body>
+
+<body class="font-sans min-h-screen overflow-x-hidden">
+    <!-- Modern Loading Overlay -->
+    <div class="gradient-bg overflow-y-hidden">
+        <div id="loadingOverlay" class="fixed inset-0 z-50 flex items-center justify-center modern-loading">
+            <div class="text-center">
+                <!-- Modern Spinner -->
+                <div class="relative mb-8">
+                    <div class="modern-spinner">
+                        <div class="spinner-ring ring-1"></div>
+                        <div class="spinner-ring ring-2"></div>
+                        <div class="spinner-ring ring-3"></div>
+                    </div>
+                    <div class="spinner-center">
+                        <span class="text-3xl">🎮</span>
+                    </div>
+                </div>
+
+                <!-- Loading Text dengan Typewriter Effect -->
+                <div class="text-white text-xl font-bold mb-4 typewriter">
+                    <span id="loadingText">JokomintoGame</span>
+                </div>
+
+                <!-- Modern Progress Bar -->
+                <div class="w-64 mx-auto">
+                    <div class="modern-progress-bar">
+                        <div class="modern-progress-fill"></div>
+                    </div>
+                    <div class="text-white text-sm mt-2 opacity-80">Initializing...</div>
+                </div>
+            </div>
+        </div>
+
+        <style>
+            .modern-loading {
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+                background-size: 400% 400%;
+                animation: gradientShift 3s ease infinite;
+            }
+
+            .modern-spinner {
+                position: relative;
+                width: 80px;
+                height: 80px;
+                margin: 0 auto;
+            }
+
+            .spinner-ring {
+                position: absolute;
+                border-radius: 50%;
+                border: 2px solid transparent;
+                border-top-color: rgba(255, 255, 255, 0.8);
+                animation: spin 2s linear infinite;
+            }
+
+            .ring-1 {
+                width: 80px;
+                height: 80px;
+                animation-duration: 2s;
+            }
+
+            .ring-2 {
+                width: 60px;
+                height: 60px;
+                top: 10px;
+                left: 10px;
+                animation-duration: 1.5s;
+                animation-direction: reverse;
+                border-top-color: rgba(255, 255, 255, 0.6);
+            }
+
+            .ring-3 {
+                width: 40px;
+                height: 40px;
+                top: 20px;
+                left: 20px;
+                animation-duration: 1s;
+                border-top-color: rgba(255, 255, 255, 0.4);
+            }
+
+            .spinner-center {
+                position: absolute;
+                top: 50%;
+                left: 50%;
+                transform: translate(-50%, -50%);
+                animation: pulse 2s ease infinite;
+            }
+
+            @keyframes spin {
+                0% {
+                    transform: rotate(0deg);
+                }
+
+                100% {
+                    transform: rotate(360deg);
+                }
+            }
+
+            .typewriter {
+                overflow: hidden;
+                border-right: 2px solid rgba(255, 255, 255, 0.7);
+                white-space: nowrap;
+                animation: typewriter 2s steps(40, end), blink-caret 0.5s step-end infinite;
+            }
+
+            @keyframes typewriter {
+                from {
+                    width: 0;
+                }
+
+                to {
+                    width: 100%;
+                }
+            }
+
+            @keyframes blink-caret {
+
+                from,
+                to {
+                    border-color: transparent;
+                }
+
+                50% {
+                    border-color: rgba(255, 255, 255, 0.7);
+                }
+            }
+
+            .modern-progress-bar {
+                width: 100%;
+                height: 4px;
+                background: rgba(255, 255, 255, 0.2);
+                border-radius: 10px;
+                overflow: hidden;
+            }
+
+            .modern-progress-fill {
+                height: 100%;
+                background: linear-gradient(90deg, #fff, rgba(255, 255, 255, 0.8));
+                border-radius: 10px;
+                animation: progressFill 3s ease-in-out infinite;
+            }
+
+            @keyframes progressFill {
+                0% {
+                    width: 0%;
+                }
+
+                50% {
+                    width: 70%;
+                }
+
+                100% {
+                    width: 100%;
+                }
+            }
+
+            /* Enhanced Character Animations */
+            .character-container {
+                position: relative;
+            }
+
+            .character-float {
+                animation: characterFloat 4s ease-in-out infinite;
+                filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.2));
+            }
+
+            @keyframes characterFloat {
+
+                0%,
+                100% {
+                    transform: translateY(0) rotate(0deg);
+                }
+
+                25% {
+                    transform: translateY(-10px) rotate(1deg);
+                }
+
+                50% {
+                    transform: translateY(-5px) rotate(0deg);
+                }
+
+                75% {
+                    transform: translateY(-10px) rotate(-1deg);
+                }
+            }
+
+            .character-particle {
+                position: absolute;
+                width: 6px;
+                height: 6px;
+                background: radial-gradient(circle, #fff, rgba(255, 255, 255, 0.3));
+                border-radius: 50%;
+                opacity: 0.7;
+            }
+
+            .particle-1 {
+                top: 20%;
+                left: 10%;
+                animation: floatParticle1 3s ease-in-out infinite;
+            }
+
+            .particle-2 {
+                top: 30%;
+                right: 15%;
+                animation: floatParticle2 4s ease-in-out infinite 0.5s;
+            }
+
+            .particle-3 {
+                bottom: 25%;
+                left: 20%;
+                animation: floatParticle3 3.5s ease-in-out infinite 1s;
+            }
+
+            .particle-4 {
+                bottom: 35%;
+                right: 10%;
+                animation: floatParticle4 4.5s ease-in-out infinite 1.5s;
+            }
+
+            @keyframes floatParticle1 {
+
+                0%,
+                100% {
+                    transform: translate(0, 0) scale(1);
+                    opacity: 0.7;
+                }
+
+                50% {
+                    transform: translate(-15px, -20px) scale(1.2);
+                    opacity: 1;
+                }
+            }
+
+            @keyframes floatParticle2 {
+
+                0%,
+                100% {
+                    transform: translate(0, 0) scale(1);
+                    opacity: 0.7;
+                }
+
+                50% {
+                    transform: translate(20px, -15px) scale(1.1);
+                    opacity: 1;
+                }
+            }
+
+            @keyframes floatParticle3 {
+
+                0%,
+                100% {
+                    transform: translate(0, 0) scale(1);
+                    opacity: 0.7;
+                }
+
+                50% {
+                    transform: translate(-10px, 25px) scale(1.3);
+                    opacity: 1;
+                }
+            }
+
+            @keyframes floatParticle4 {
+
+                0%,
+                100% {
+                    transform: translate(0, 0) scale(1);
+                    opacity: 0.7;
+                }
+
+                50% {
+                    transform: translate(15px, 20px) scale(1.1);
+                    opacity: 1;
+                }
+            }
+
+            .character-glow {
+                position: absolute;
+                bottom: -10px;
+                left: 50%;
+                transform: translateX(-50%);
+                width: 80%;
+                height: 20px;
+                background: radial-gradient(ellipse, rgba(255, 255, 255, 0.3), transparent);
+                border-radius: 50%;
+                animation: glowPulse 2s ease-in-out infinite;
+            }
+
+            @keyframes glowPulse {
+
+                0%,
+                100% {
+                    opacity: 0.3;
+                    transform: translateX(-50%) scale(1);
+                }
+
+                50% {
+                    opacity: 0.6;
+                    transform: translateX(-50%) scale(1.1);
+                }
+            }
+
+            /* Enhanced Typography */
+            .title-gradient {
+                background: linear-gradient(135deg, #fff, #f0f8ff, #e6f3ff);
+                -webkit-background-clip: text;
+                -webkit-text-fill-color: transparent;
+                background-clip: text;
+                animation: titleShine 3s ease-in-out infinite;
+            }
+
+            .title-shadow {
+                filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+            }
+
+            @keyframes titleShine {
+
+                0%,
+                100% {
+                    filter: brightness(1) drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3));
+                }
+
+                50% {
+                    filter: brightness(1.2) drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4));
+                }
+            }
+
+            .subtitle-glow {
+                text-shadow: 0 2px 10px rgba(255, 255, 255, 0.3);
+                animation: subtitleGlow 4s ease-in-out infinite;
+            }
+
+            @keyframes subtitleGlow {
+
+                0%,
+                100% {
+                    text-shadow: 0 2px 10px rgba(255, 255, 255, 0.3);
+                }
+
+                50% {
+                    text-shadow: 0 4px 20px rgba(255, 255, 255, 0.5);
+                }
+            }
+
+            /* Premium Start Button */
+            .premium-start-btn {
+                position: relative;
+                overflow: hidden;
+                background: linear-gradient(135deg, #667eea, #764ba2, #f093fb);
+                background-size: 200% 200%;
+                animation: gradientShift 3s ease infinite;
+                box-shadow:
+                    0 8px 32px rgba(102, 126, 234, 0.3),
+                    0 4px 16px rgba(0, 0, 0, 0.1);
+            }
+
+            .premium-start-btn:hover {
+                transform: translateY(-4px) scale(1.05);
+                box-shadow:
+                    0 15px 40px rgba(102, 126, 234, 0.4),
+                    0 8px 24px rgba(0, 0, 0, 0.2);
+            }
+
+            .start-sparkle {
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.3) 50%, transparent 70%);
+                transform: translateX(-100%);
+                animation: sparkle 2s infinite;
+            }
+
+            @keyframes sparkle {
+                0% {
+                    transform: translateX(-100%);
+                }
+
+                50% {
+                    transform: translateX(100%);
+                }
+
+                100% {
+                    transform: translateX(100%);
+                }
+            }
+
+            /* Smooth scrolling untuk semua device */
+            * {
+                -webkit-overflow-scrolling: touch;
+            }
+
+            /* Simple fix - natural page scroll */
+            body,
+            html {
+                height: auto;
+                overflow-x: hidden;
+            }
+        </style>
+        <div id="sleepOverlay" class="sleep-overlay hidden">
+            <div class="sleep-content">
+                <div class="flex justify-center items-center w-full animate-pulse">
+                    <div class="w-48 h-48 flex items-center justify-center relative">
+                        <img id="charSleep" src="/asset/char/sleep.png" alt="character"
+                            class="max-w-full max-h-full object-contain">
+                    </div>
+                </div>
+                <h2 class="text-2xl font-bold mb-2">Jokominto is Sleeping</h2>
+                <p class="text-lg mb-6 opacity-80">Sweet dreams...</p>
+                <button data-action="wake-up"
+                    class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-6 py-3 rounded-xl font-bold text-lg btn-hover">
+                    ☀ Wake Up
+                </button>
+            </div>
+        </div>
+        <div class="min-h-screen flex flex-col">
+            <!-- Status Bar - Diperbesar untuk Mobile -->
+            <div id="statusBar" class="stat-bar p-3 sm:p-4 mx-3 sm:mx-4 mt-2 sm:mt-3 rounded-2xl">
+                <!-- Mobile: Grid 2x2, Desktop: Horizontal -->
+                <div
+                    class="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:justify-center sm:gap-4 lg:space-x-6 lg:flex-nowrap lg:gap-0">
+                    <!-- Mood Status -->
+                    <div class="flex flex-col space-y-2 bg-white/25 px-4 py-3 rounded-xl min-w-0 flex-1">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xl sm:text-2xl">😊</span>
+                                <p class="text-white font-semibold text-sm sm:text-base">Mood</p>
+                            </div>
+                            <p class="text-white font-bold text-sm sm:text-base" id="mood-value"></p>
+                        </div>
+                        <div class="w-full progress-bar h-3">
+                            <div id="mood-bar"
+                                class="progress-fill bg-gradient-to-r from-yellow-400 to-green-500 h-3 rounded-full"
+                                style="width: 100%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Hygiene Status -->
+                    <div class="flex flex-col space-y-2 bg-white/25 px-4 py-3 rounded-xl min-w-0 flex-1">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xl sm:text-2xl">🛁</span>
+                                <p class="text-white font-semibold text-sm sm:text-base">Hygiene</p>
+                            </div>
+                            <p class="text-white font-bold text-sm sm:text-base" id="hygiene-value"></p>
+                        </div>
+                        <div class="w-full progress-bar h-3">
+                            <div id="hygiene-bar"
+                                class="progress-fill bg-gradient-to-r from-blue-400 to-cyan-500 h-3 rounded-full"
+                                style="width: 100%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Hunger Status -->
+                    <div class="flex flex-col space-y-2 bg-white/25 px-4 py-3 rounded-xl min-w-0 flex-1">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xl sm:text-2xl">🍎</span>
+                                <p class="text-white font-semibold text-sm sm:text-base">Hunger</p>
+                            </div>
+                            <p class="text-white font-bold text-sm sm:text-base" id="hunger-value"></p>
+                        </div>
+                        <div class="w-full progress-bar h-3">
+                            <div id="hunger-bar"
+                                class="progress-fill bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full"
+                                style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <!-- Coin Status -->
+                    <div class="flex flex-col space-y-2 bg-white/25 px-4 py-3 rounded-xl min-w-0 flex-1">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center space-x-2">
+                                <span class="text-xl sm:text-2xl">🪙</span>
+                                <p class="text-white font-semibold text-sm sm:text-base">Coin</p>
+                            </div>
+                            <p class="text-white font-bold text-sm sm:text-base" id="coin"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Message Container - Diperbaiki untuk Mobile -->
+            <div id="message-container" class="flex justify-center items-center px-4 py-3 sm:p-4 hidden mt-2">
+                <div
+                    class="bg-white/95 backdrop-blur-sm px-5 py-3 sm:px-6 sm:py-3 rounded-2xl card-shadow max-w-sm sm:max-w-md mx-auto">
+                    <h2 id="message"
+                        class="text-gray-800 font-semibold text-sm sm:text-base text-center leading-relaxed">
+                    </h2>
+                </div>
+            </div>
+            <!-- Main Content -->
+            <div class="mainScreen justify-center items-center flex-1 flex flex-col px-4 py-3 sm:p-6">
+                <div id="gameTitle" class="text-center mb-6 sm:mb-8">
+                    <div class="flex justify-center items-center w-full mb-4">
+                        <div class="w-48 h-48 flex items-center justify-center relative">
+                            <img id="charHome" src="/asset/char/idle.png" alt="character"
+                                class="max-w-full max-h-full object-contain animate-bounce">
+                        </div>
+                    </div>
+                    <h1 class="font-game text-3xl sm:text-4xl text-white mb-2">🎮 JokomintoGame</h1>
+                    <p class="text-white/80 text-base sm:text-lg mb-8">Take care of your virtual pet!</p>
+                    <button
+                        class="bg-gradient-to-r from-blue-400 to-blue-600 text-white px-8 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="start-game">
+                        <span class="text-2xl sm:text-2xl mr-2"></span>Start
+                    </button>
+                </div>
+                <!-- Main Menu char -->
+                <div id="MainCharDiv" class="flex justify-center items-center w-full mt-8 mb-8">
+                    <div class="flex justify-center items-center w-full">
+                        <div class="w-48 h-48 flex items-center justify-center relative">
+                            <img id="charMain" src="/asset/char/idle.png" alt="character"
+                                class="max-w-full max-h-full object-contain">
+
+                            <!-- Status Bubbles -->
+                            <!-- Bubble Lapar (Kanan Atas) -->
+                            <div id="hungerBubble" class="status-bubble bubble-right">
+                                <div class="bubble-content">
+                                    🍽️
+                                </div>
+                                <div class="bubble-tail bubble-tail-right"></div>
+                            </div>
+
+                            <!-- Bubble Mood Buruk (Tengah Atas) -->
+                            <div id="moodBubble" class="status-bubble bubble-center">
+                                <div class="bubble-content">
+                                    😤
+                                </div>
+                                <div class="bubble-tail bubble-tail-center"></div>
+                            </div>
+
+                            <!-- Bubble Kotor (Kiri Atas) -->
+                            <div id="hygieneBubble" class="status-bubble bubble-left">
+                                <div class="bubble-content">
+                                    💧
+                                </div>
+                                <div class="bubble-tail bubble-tail-left"></div>
+                            </div>
+
+                            <!-- Bath Overlay -->
+                            <div id="overlay" class="absolute inset-0 flex items-center justify-center hidden">
+                                <img id="overlaygif" src="" alt="overlay animation"
+                                    class="w-full h-full object-contain pointer-events-none">
+                            </div>
+                            <div id="overlayHunger" class="absolute inset-0 flex items-center justify-center hidden">
+                                <img id="overlaygif" src="/asset/gif/hungry.gif" alt="overlay animation"
+                                    class="w-full h-full object-contain pointer-events-none">
+                            </div>
+                            <div id="overlayHygiene"
+                                class="absolute inset-0 flex items-center justify-center px-5 translate-y-16 hidden">
+                                <img id="overlaygif" src="/asset/gif/dirty.gif" alt="overlay animation"
+                                    class="w-full h-full object-contain pointer-events-none">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="optionButton"
+                    class="flex flex-col space-y-4 sm:space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg">
+                    <button
+                        class="bg-gradient-to-r from-green-400 to-green-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="game-menu">
+                        <span class="text-2xl sm:text-2xl mr-2">🎯</span>Play game
+                    </button>
+                    <button
+                        class="bg-gradient-to-r from-blue-400 to-blue-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="soap-menu">
+                        <span class="text-2xl sm:text-2xl mr-2">🛁</span>Bath
+                    </button>
+                    <button
+                        class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="food-menu">
+                        <span class="text-2xl sm:text-2xl mr-2">🍎</span>Eat
+                    </button>
+                </div>
+
+                <!-- Game Menu -->
+                <div id="menuGame" class="flex flex-col space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg hidden">
+                    <div class="text-center mb-6 sm:mb-6">
+                        <h1 class="font-game text-3xl sm:text-3xl text-white mb-2">🎮 Choose Game</h1>
+                    </div>
+                    <button
+                        class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="tebak-kata">
+                        <span class="text-2xl sm:text-2xl mr-2">🔤</span>Guess Word
+                    </button>
+                    <button
+                        class="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="tebak-gambar">
+                        <span class="text-2xl sm:text-2xl mr-2">🖼️</span>Guess Picture
+                    </button>
+                    <button
+                        class="bg-gradient-to-r from-pink-500 to-orange-400 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="xox">
+                        <span class="text-2xl sm:text-2xl mr-2">❌</span>Tic Tac Toe vs Joko
+                    </button>
+                    <button
+                        class="bg-gradient-to-r from-red-500 to-red-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="home">
+                        <span class="text-2xl sm:text-2xl mr-2">🔙</span>Back
+                    </button>
+                </div>
+                <!-- Menu Pilih Sabun - Tambahkan setelah menuGame -->
+                <div id="menuSabun" class="flex flex-col space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg hidden">
+                    <div class="text-center mb-6 sm:mb-6">
+                        <h1 class="font-game text-3xl sm:text-3xl text-white mb-2">🧼 Choose soap</h1>
+                        <p class="text-white/80 text-sm sm:text-base">Choose soap to increase the hygiene</p>
+                    </div>
+
+                    <!-- Sabun Biasa -->
+                    <button
+                        class="bg-gradient-to-r from-blue-400 to-blue-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="buy-soap" data-soap-type="biasa">
+                        <div class="flex justify-between items-center">
+                            <div class="text-left">
+                                <div class="text-xl sm:text-xl">🧼 Normal Soap</div>
+                                <div class="text-sm opacity-80">+30 Hygiene</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold text-green-200">FREE</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Sabun Wangi -->
+                    <button
+                        class="bg-gradient-to-r from-purple-400 to-purple-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="buy-soap" data-soap-type="wangi">
+                        <div class="flex justify-between items-center">
+                            <div class="text-left">
+                                <div class="text-xl sm:text-xl">🌸 Fragrance Soap</div>
+                                <div class="text-sm opacity-80">+50 Hygiene</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold">25 💰</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Sabun Premium -->
+                    <button
+                        class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="buy-soap" data-soap-type="premium">
+                        <div class="flex justify-between items-center">
+                            <div class="text-left">
+                                <div class="text-xl sm:text-xl">✨ Premium Soap</div>
+                                <div class="text-sm opacity-80">+80 Hygiene</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold">50 💰</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Tombol Kembali -->
+                    <button
+                        class="bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover"
+                        data-action="home">
+                        <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                    </button>
+                </div>
+                <!-- Menu Pilih Makanan - Tambahkan setelah menuSabun -->
+                <div id="menuMakanan" class="flex flex-col space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg hidden">
+                    <div class="text-center mb-6 sm:mb-6">
+                        <h1 class="font-game text-3xl sm:text-3xl text-white mb-2">🍽️ Choose Food</h1>
+                        <p class="text-white/80 text-sm sm:text-base">Choose food to reduce hunger</p>
+                    </div>
+
+                    <!-- Air Putih (Gratis) -->
+                    <button
+                        class="bg-gradient-to-r from-blue-300 to-blue-400 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="buy-food" data-food-type="biskuit">
+                        <div class="flex justify-between items-center">
+                            <div class="text-left">
+                                <div class="text-xl sm:text-xl">🍪 Cookies</div>
+                                <div class="text-sm opacity-80">-10 Hunger</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold text-green-200">FREE</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Roti -->
+                    <button
+                        class="bg-gradient-to-r from-yellow-400 to-yellow-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="buy-food" data-food-type="roti">
+                        <div class="flex justify-between items-center">
+                            <div class="text-left">
+                                <div class="text-xl sm:text-xl">🍞 Bread</div>
+                                <div class="text-sm opacity-80">-25 Hunger</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold">5 💰</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Nasi Goreng -->
+                    <button
+                        class="bg-gradient-to-r from-orange-400 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="buy-food" data-food-type="nasigoreng">
+                        <div class="flex justify-between items-center">
+                            <div class="text-left">
+                                <div class="text-xl sm:text-xl">🍳 Nasi Goreng</div>
+                                <div class="text-sm opacity-80">-40 Hunger</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold">15 💰</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Pizza -->
+                    <button
+                        class="bg-gradient-to-r from-red-400 to-red-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="buy-food" data-food-type="pizza">
+                        <div class="flex justify-between items-center">
+                            <div class="text-left">
+                                <div class="text-xl sm:text-xl">🍕 Pizza</div>
+                                <div class="text-sm opacity-80">-60 Hunger</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold">30 💰</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Steak Premium -->
+                    <button
+                        class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="buy-food" data-food-type="steak">
+                        <div class="flex justify-between items-center">
+                            <div class="text-left">
+                                <div class="text-xl sm:text-xl">🥩 Premium Steak</div>
+                                <div class="text-sm opacity-80">-80 Hunger</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-lg font-bold">60 💰</div>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- Tombol Kembali -->
+                    <button
+                        class="bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover"
+                        data-action="home">
+                        <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                    </button>
+                </div>
+                <!-- Tebak Kata Game - Spacing Diperbaiki -->
+                <div id="xoxGame"
+                    class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl" style="display: none">
+                    <div class="flex justify-center items-center w-full mt-10">
+                        <div class="w-40 h-40 flex items-center justify-center">
+                            <img id="charXox" src="/asset/char/idle.png" alt="Joko"
+                                class="max-w-full max-h-full object-contain">
+                        </div>
+                    </div>
+
+                    <div class="bg-white/95 backdrop-blur-sm p-5 sm:p-6 rounded-3xl card-shadow">
+                        <div class="text-center mb-4">
+                            <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-2">❌⭕ Tic Tac Toe</h1>
+                            <p class="text-gray-600 text-sm sm:text-base">Beat Joko! You are ❌, Joko is ⭕</p>
+                        </div>
+
+                        <div class="bg-gradient-to-r from-pink-500 to-orange-400 text-white p-3 rounded-2xl text-center mb-5">
+                            <p id="xoxStatus" class="font-bold text-lg">Your turn!</p>
+                            <p class="text-sm font-semibold opacity-90">🏅 up to <span id="xoxPoints">-</span> pts · 🪙 up to
+                                <span id="xoxCoins">-</span></p>
+                        </div>
+
+                        <div id="xoxBoard" class="xox-board mx-auto mb-5">
+                            <button type="button" class="xox-cell" data-cell="0" aria-label="Cell 1"></button>
+                            <button type="button" class="xox-cell" data-cell="1" aria-label="Cell 2"></button>
+                            <button type="button" class="xox-cell" data-cell="2" aria-label="Cell 3"></button>
+                            <button type="button" class="xox-cell" data-cell="3" aria-label="Cell 4"></button>
+                            <button type="button" class="xox-cell" data-cell="4" aria-label="Cell 5"></button>
+                            <button type="button" class="xox-cell" data-cell="5" aria-label="Cell 6"></button>
+                            <button type="button" class="xox-cell" data-cell="6" aria-label="Cell 7"></button>
+                            <button type="button" class="xox-cell" data-cell="7" aria-label="Cell 8"></button>
+                            <button type="button" class="xox-cell" data-cell="8" aria-label="Cell 9"></button>
+                            <span class="xox-pencil" aria-hidden="true">✏️</span>
+                        </div>
+
+                        <button data-action="xox-again"
+                            class="hidden w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-4">
+                            <span class="text-xl mr-2">🔄</span>Play Again
+                        </button>
+
+                        <button data-action="home"
+                            class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
+                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                        </button>
+                    </div>
+                </div>
+
+                <div id="tebakKata"
+                    class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl hidden">
+                    <div class="flex justify-center items-center w-full mt-8 animate-bounce">
+                        <div class="flex justify-center items-center w-full">
+                            <div class="w-48 h-48 flex items-center justify-center">
+                                <img id="charTebakKata" src="/asset/char/idle.png" alt="character"
+                                    class="max-w-full max-h-full object-contain">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white/95 backdrop-blur-sm p-5 sm:p-6 rounded-3xl card-shadow">
+                        <div class="text-center mb-5 sm:mb-6">
+                            <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-2">🔤 Game Guess Word</h1>
+                            <p class="text-gray-600 text-sm sm:text-base leading-relaxed">Guess the word based on the
+                                clues
+                                given!</p>
+                        </div>
+
+                        <!-- Timer - Lebih Besar -->
+                        <div
+                            class="bg-gradient-to-r from-red-400 to-red-600 text-white p-3 sm:p-3 rounded-2xl text-center mb-4 sm:mb-4">
+                            <p class="font-bold text-lg sm:text-lg">⏰ Time: <span id="time"
+                                    class="animate-pulse">5</span>
+                                second</p>
+                            <p class="text-sm font-semibold opacity-90">🏅 <span id="wordPoints">-</span> pts · 🪙 <span id="wordCoins">-</span></p>
+                        </div>
+
+                        <!-- Word Display - Lebih Besar -->
+                        <div class="bg-gray-100 p-4 sm:p-4 rounded-2xl text-center mb-5 sm:mb-6">
+                            <p id="wordDisplay" class="text-2xl sm:text-2xl font-bold text-gray-800 tracking-widest">
+                                Loading...</p>
+                        </div>
+
+                        <!-- Input Form - Spacing Diperbaiki -->
+                        <form id="tebakKataForm" class="space-y-4 sm:space-y-4 mb-4">
+                            <input type="text" id="inputTebakKata" placeholder="Enter word.." required
+                                class="w-full p-4 sm:p-4 rounded-2xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none text-lg sm:text-lg font-semibold text-center">
+                            <button type="submit"
+                                class="w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover">
+                                <span class="text-xl sm:text-xl mr-2">✅</span>Submit Answer
+                            </button>
+                        </form>
+
+                        <!-- Hint Button - Spacing Diperbaiki -->
+                        <button data-action="reveal-hint"
+                            class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover mb-4">
+                            <span class="text-xl sm:text-xl mr-2">💡</span>Hint (-20 Coin)
+                        </button>
+
+                        <!-- Back Button - Spacing Diperbaiki -->
+                        <button data-action="home"
+                            class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
+                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tebak Gambar Game - Simple Version -->
+                <div id="tebakGambar"
+                    class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl hidden">
+                    <div class="flex justify-center items-center w-full mt-8 animate-bounce">
+                        <div class="flex justify-center items-center w-full">
+                            <div class="w-48 h-48 flex items-center justify-center">
+                                <img id="charTebakGambar" src="/asset/char/idle.png" alt="character"
+                                    class="max-w-full max-h-full object-contain">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-white/95 backdrop-blur-sm p-5 sm:p-6 rounded-3xl card-shadow">
+                        <div class="text-center mb-5 sm:mb-6">
+                            <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-2">🖼️ Game Guess Picture</h1>
+                            <p class="text-gray-600 text-sm sm:text-base leading-relaxed">Guess the picture based on the
+                                visible part!</p>
+                        </div>
+
+                        <!-- Timer -->
+                        <div
+                            class="bg-gradient-to-r from-red-400 to-red-600 text-white p-3 sm:p-3 rounded-2xl text-center mb-4 sm:mb-4">
+                            <p class="font-bold text-lg sm:text-lg">⏰ Time: <span id="imageTime"
+                                    class="animate-pulse">30</span> second</p>
+                            <p class="text-sm font-semibold opacity-90">🏅 <span id="imagePoints">-</span> pts
+                                · 🪙 <span id="imageCoins">-</span> · 👁️ <span id="imageVisibility">-</span> visible</p>
+                        </div>
+
+                        <!-- Image Container with Grid Overlay -->
+                        <div class="relative mb-5 bg-gray-200 rounded-2xl overflow-hidden" style="aspect-ratio: 1;">
+                            <!-- Background Image -->
+                            <img id="gameImage" src="" alt="Guess this image" class="w-full h-full object-cover">
+
+                            <!-- Grid Overlay (3x3) -->
+                            <div class="absolute inset-0 grid grid-cols-3 grid-rows-3">
+                                <div class="overlay-tile bg-black transition-all" data-index="0"></div>
+                                <div class="overlay-tile bg-black transition-all" data-index="1"></div>
+                                <div class="overlay-tile bg-black transition-all" data-index="2"></div>
+                                <div class="overlay-tile bg-black transition-all" data-index="3"></div>
+                                <div class="overlay-tile bg-black transition-all" data-index="4"></div>
+                                <div class="overlay-tile bg-black transition-all" data-index="5"></div>
+                                <div class="overlay-tile bg-black transition-all" data-index="6"></div>
+                                <div class="overlay-tile bg-black transition-all" data-index="7"></div>
+                                <div class="overlay-tile bg-black transition-all" data-index="8"></div>
+                            </div>
+                        </div>
+                        <p id="imageCredit" class="hidden -mt-3 mb-4 text-xs text-gray-400 text-right">
+                            Images from <a href="https://pixabay.com/" target="_blank" rel="noopener noreferrer"
+                                class="underline hover:text-gray-600">Pixabay</a>
+                        </p>
+
+                        <!-- Input Form -->
+                        <form id="tebakGambarForm" class="space-y-4 sm:space-y-4 mb-4">
+                            <input type="text" id="inputTebakGambar" placeholder="What's in the picture?" required
+                                class="w-full p-4 sm:p-4 rounded-2xl border-2 border-gray-200 focus:border-purple-500 focus:outline-none text-lg sm:text-lg font-semibold text-center">
+                            <button type="submit"
+                                class="w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover">
+                                <span class="text-xl sm:text-xl mr-2">✅</span>Submit Answer
+                            </button>
+                        </form>
+
+                        <!-- Hint Button -->
+                        <button data-action="reveal-tile" id="revealImageBtn"
+                            class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-4">
+                            <span class="text-xl mr-2">🔍</span>Open Tile (-20 Coin)
+                        </button>
+
+                        <!-- Back Button -->
+                        <button data-action="home"
+                            class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 rounded-2xl font-bold btn-hover">
+                            <span class="text-xl mr-2">🔙</span>Back to menu
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div id="debugTerminal" class="debug-terminal mx-auto justify-center items-center flex-1 flex flex-col"
+                style="display: none;">
+                <div class="debug-header">
+                    <span>🐛 Debug Terminal</span>
+                    <button id="clearDebug" class="debug-btn">Clear</button>
+                    <button id="closeDebug" class="debug-btn">×</button>
+                </div>
+                <div id="debugContent"
+                    class="debug-content text-xl text-center flex-1 flex items-center justify-center">
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- audio -->
+    <audio id="waterSplash" src="/asset/soundEffect/splash.m4a" preload="auto"></audio>
+    <audio id="Bubbles" src="/asset/soundEffect/Bubbles.m4a" preload="auto"></audio>
+    <audio id="Sparkling" src="/asset/soundEffect/Sparkling.m4a" preload="auto"></audio>
+    <audio id="eat" src="/asset/soundEffect/eat.MP3" preload="auto"></audio>
+    <audio id="error" src="/asset/soundEffect/error.MP3" preload="auto"></audio>
+    <audio id="success" src="/asset/soundEffect/success.MP3" preload="auto"></audio>
+    <audio id="tick" src="/asset/soundEffect/tick.m4a" preload="auto"></audio>
+    <audio id="ding" src="/asset/soundEffect/ding.MP3" preload="auto"></audio>
+
+    <!-- Load XState library -->
+    <script src="/asset/vendor/xstate-4.38.3.js"></script>
+
+    <!-- Load RxJS library -->
+    <script src="/asset/vendor/rxjs-7.8.1.umd.min.js"></script>
+
+    <!-- Load semua script dengan type module -->
+    <script type="module" src="index.js"></script>
+    <script type="module" src="/src/components.js"></script>
+    <script type="module" src="/src/condition.js"></script>
+    <script type="module" src="/src/stateMachine.js"></script>
+    <script type="module" src="/src/stateManager.js"></script>
+    <script type="module" src="/src/routing.js"></script>
+    <script type="module" src="/src/eventHandler.js"></script>
+    <script type="module" src="/src/debug.js"></script>
+    <script type="module" src="/src/Game/tebakKata.js"></script>
+    <script type="module" src="/src/Game/tebakGambar.js"></script>
+    <script type="module" src="/src/Menu/soapMenu.js"></script>
+    <script type="module" src="/src/Menu/foodMenu.js"></script>
+
+
+    <!-- Debug Toggle Button -->
+    <button id="debugToggle" class="debug-toggle">🐛</button>
+    <script>
+        // Debug Terminal Functions
+        function addDebugLog(message, type = 'info') {
+            const debugContent = document.getElementById('debugContent');
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = `debug-log ${type}`;
+            logEntry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
+            debugContent.appendChild(logEntry);
+            debugContent.scrollTop = debugContent.scrollHeight;
+        }
+
+        // Debug Terminal Event Listeners
+        document.addEventListener('DOMContentLoaded', function () {
+            const debugToggle = document.getElementById('debugToggle');
+            const debugTerminal = document.getElementById('debugTerminal');
+            const closeDebug = document.getElementById('closeDebug');
+            const clearDebug = document.getElementById('clearDebug');
+
+            // Toggle debug terminal
+            debugToggle.addEventListener('click', function () {
+                const isVisible = debugTerminal.style.display !== 'none';
+                debugTerminal.style.display = isVisible ? 'none' : 'block';
+            });
+
+            // Close debug terminal
+            closeDebug.addEventListener('click', function () {
+                debugTerminal.style.display = 'none';
+            });
+
+            // Clear debug logs
+            clearDebug.addEventListener('click', function () {
+                document.getElementById('debugContent').innerHTML = '';
+            });
+        });
+    </script>
+</body>
+
 </html>

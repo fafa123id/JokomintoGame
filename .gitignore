@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+.npm-cache/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Database
+server/storage/database/*
+!server/storage/database/.gitkeep
+server/storage/cache/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+
+# Logs & test output
+*.log
+npm-debug.log*
+coverage/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+.previous_image

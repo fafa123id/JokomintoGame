@@ -1,0 +1,306 @@
+/* Pet sprite + skins */
+.pet-sprite {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 200 / 314;
+  transform-origin: 50% 100%;
+  isolation: isolate;
+}
+.pet-sprite > img {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transition: filter 0.4s ease;
+}
+.pet-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.pet-layer--under {
+  z-index: -1;
+}
+.pet-glow {
+  filter: drop-shadow(0 0 10px rgba(253, 224, 71, 0.9));
+}
+
+/* Idle life */
+.pet-idle {
+  animation: pet-breathe 3.2s ease-in-out infinite;
+}
+@keyframes pet-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.02, 0.975); }
+}
+
+/* Reactions */
+.pet-squish { animation: pet-squish 0.5s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes pet-squish {
+  0% { transform: scale(1, 1); }
+  25% { transform: scale(1.18, 0.82); }
+  55% { transform: scale(0.9, 1.12) translateY(-12px); }
+  100% { transform: scale(1, 1); }
+}
+.pet-dizzy { animation: pet-dizzy 0.9s ease-in-out; }
+@keyframes pet-dizzy {
+  0% { transform: rotate(0); }
+  25% { transform: rotate(-14deg); }
+  50% { transform: rotate(12deg); }
+  75% { transform: rotate(-8deg); }
+  100% { transform: rotate(0); }
+}
+.pet-chomp { animation: pet-chomp 0.32s ease-in-out 6; }
+@keyframes pet-chomp {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.06, 0.92); }
+}
+.pet-wash { animation: pet-wash 0.4s ease-in-out 5; }
+@keyframes pet-wash {
+  0%, 100% { transform: rotate(0) translateX(0); }
+  25% { transform: rotate(-5deg) translateX(-6px); }
+  75% { transform: rotate(5deg) translateX(6px); }
+}
+.pet-jump { animation: pet-jump 0.55s cubic-bezier(.3, 1.5, .5, 1) 2; }
+@keyframes pet-jump {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  15% { transform: translateY(0) scale(1.1, 0.88); }
+  50% { transform: translateY(-34px) scale(0.95, 1.06); }
+}
+.pet-shake { animation: pet-shake 0.45s ease-in-out 2; }
+@keyframes pet-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-9px); }
+  40%, 80% { transform: translateX(9px); }
+}
+.pet-think { animation: pet-think 0.8s ease-in-out infinite; }
+@keyframes pet-think {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg) translateY(-3px); }
+}
+
+/* Speech bubble */
+.pet-bubble {
+  position: absolute;
+  left: 50%;
+  top: -14px;
+  transform: translate(-50%, -100%) scale(0.6);
+  opacity: 0;
+  background: #fff;
+  color: #1f2937;
+  font-weight: 700;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+  transition: transform 0.25s cubic-bezier(.3, 1.6, .5, 1), opacity 0.2s ease;
+  pointer-events: none;
+  z-index: 20;
+}
+.pet-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -7px;
+  transform: translateX(-50%);
+  border: 8px solid transparent;
+  border-top-color: #fff;
+  border-bottom: 0;
+}
+.pet-bubble.is-visible {
+  transform: translate(-50%, -100%) scale(1);
+  opacity: 1;
+}
+
+/* Particles */
+.fx-particle {
+  position: fixed;
+  pointer-events: none;
+  z-index: 60;
+  font-size: 1.4rem;
+  will-change: transform, opacity;
+}
+.fx-float { animation: fx-float 1.2s ease-out forwards; }
+@keyframes fx-float {
+  0% { transform: translate(0, 0) scale(0.6); opacity: 0; }
+  15% { opacity: 1; }
+  100% { transform: translate(var(--dx), -110px) scale(1.1); opacity: 0; }
+}
+.fx-confetti {
+  width: 9px;
+  height: 14px;
+  border-radius: 2px;
+  animation: fx-confetti var(--duration) cubic-bezier(.2, .6, .4, 1) forwards;
+}
+@keyframes fx-confetti {
+  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--dx), 105vh) rotate(var(--spin)); opacity: 0.9; }
+}
+
+/* Tic tac toe */
+.xox-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  width: min(100%, 300px);
+  aspect-ratio: 1;
+}
+.xox-cell {
+  position: relative;
+  border-radius: 18px;
+  background: #f3f4f6;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.06);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.xox-cell:not(:disabled):hover {
+  background: #ede9fe;
+  transform: translateY(-2px);
+}
+.xox-cell:disabled {
+  cursor: default;
+}
+.xox-cell svg {
+  position: absolute;
+  inset: 16%;
+  width: 68%;
+  height: 68%;
+  overflow: visible;
+}
+.xox-stroke {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 14;
+  stroke-dasharray: var(--len);
+  stroke-dashoffset: var(--len);
+  animation: xox-draw 0.32s ease-out forwards;
+}
+.xox-stroke--late { animation-delay: 0.22s; }
+@keyframes xox-draw {
+  to { stroke-dashoffset: 0; }
+}
+.xox-x { stroke: #8b5cf6; }
+.xox-o { stroke: #f97316; }
+.xox-winline {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+.xox-winline line {
+  stroke: #facc15;
+  stroke-width: 10;
+  stroke-linecap: round;
+  stroke-dasharray: 600;
+  stroke-dashoffset: 600;
+  animation: xox-draw 0.5s ease-out forwards;
+  filter: drop-shadow(0 0 6px rgba(250, 204, 21, 0.8));
+}
+.xox-pencil {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 2rem;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: transform 0.45s cubic-bezier(.4, 1.3, .5, 1), opacity 0.2s ease;
+}
+.xox-pencil.is-writing {
+  animation: xox-scribble 0.12s linear infinite;
+}
+@keyframes xox-scribble {
+  0%, 100% { margin: 0; }
+  50% { margin: -3px 0 0 4px; }
+}
+.xox-board.is-shaking { animation: pet-shake 0.4s ease-in-out; }
+
+.motion-reduced .pet-idle,
+.motion-reduced .pet-squish,
+.motion-reduced .pet-dizzy,
+.motion-reduced .pet-chomp,
+.motion-reduced .pet-wash,
+.motion-reduced .pet-jump,
+.motion-reduced .pet-shake,
+.motion-reduced .pet-think,
+.motion-reduced .fx-float,
+.motion-reduced .fx-confetti,
+.motion-reduced .xox-pencil.is-writing {
+  animation: none !important;
+}
+.motion-reduced .xox-stroke,
+.motion-reduced .xox-winline line {
+  animation-duration: 0.01s;
+}
+
+/* 3D pet (three.js) */
+.pet-canvas {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1;
+}
+.pet-sprite.is-3d {
+  animation: none !important;
+  transform: none !important;
+}
+.pet-sprite.is-3d > img,
+.pet-sprite.is-3d > .pet-layer {
+  opacity: 0;
+}
+.pet-sprite.is-3d > .pet-bubble {
+  z-index: 2;
+}
+
+/* 3D world */
+#stage3d {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  z-index: 0;
+}
+.gradient-bg > .min-h-screen {
+  position: relative;
+  z-index: 1;
+}
+
+/* CSS 3D pages */
+.mainScreen {
+  perspective: 1200px;
+}
+.page-enter {
+  animation: page-enter 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+  transform-origin: 50% 0;
+}
+.page-enter > * {
+  animation: page-child 0.55s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.page-enter > *:nth-child(2) { animation-delay: 0.06s; }
+.page-enter > *:nth-child(3) { animation-delay: 0.12s; }
+.page-enter > *:nth-child(4) { animation-delay: 0.18s; }
+.page-enter > *:nth-child(5) { animation-delay: 0.24s; }
+.page-enter > *:nth-child(n + 6) { animation-delay: 0.3s; }
+@keyframes page-enter {
+  from { opacity: 0; transform: rotateX(-16deg) translateY(28px) translateZ(-120px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes page-child {
+  from { opacity: 0; transform: rotateX(-70deg) translateY(-12px); }
+  to { opacity: 1; transform: none; }
+}
+.tilt-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.18s ease-out;
+  will-change: transform;
+}
+.motion-reduced .page-enter,
+.motion-reduced .page-enter > * {
+  animation: none !important;
+}
