@@ -6,6 +6,15 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev --ignore-scripts && npm cache clean --force
 
+# Tailwind is compiled at build time so the app never depends on a CSS CDN at runtime.
+FROM ${NODE_IMAGE} AS css
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY tailwind.config.js index.html index.js ./
+COPY src ./src
+RUN npm run build:css
+
 FROM ${NODE_IMAGE} AS runtime
 ENV NODE_ENV=production \
     PORT=3005 \
@@ -23,6 +32,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json index.html index.js sw.js ./
 COPY src ./src
 COPY asset ./asset
+COPY --from=css /app/asset/vendor/tailwind.css ./asset/vendor/tailwind.css
 COPY server ./server
 
 USER node

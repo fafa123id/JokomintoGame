@@ -1,9 +1,9 @@
 // Service worker: offline fallback + web push. Code is network-first so deploys are never stale.
 // Responses are cloned before being returned; cloning later fails once the page has read the body.
-const VERSION = "v6";
+const VERSION = "v7";
 const SHELL_CACHE = `jokominto-shell-${VERSION}`;
 const MEDIA_CACHE = `jokominto-media-${VERSION}`;
-const SHELL = ["/", "/index.js", "/src/styles/game.css", "/asset/icon.png", "/asset/char/idle.png"];
+const SHELL = ["/", "/index.js", "/src/styles/game.css", "/asset/vendor/tailwind.css", "/asset/icon.png", "/asset/char/idle.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(SHELL_CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -21,8 +21,8 @@ self.addEventListener("activate", (event) => {
 const isMedia = (url) => /\.(png|jpe?g|gif|webp|svg|woff2?)$/i.test(url.pathname);
 // Audio streams with range requests, which the Cache API cannot store.
 const isAudio = (url) => /\.(m4a|mp3|ogg)$/i.test(url.pathname);
-// Third-party files the page needs to render (styles and fonts); served stale while refreshing.
-const CDN_HOSTS = ["cdn.tailwindcss.com", "fonts.googleapis.com", "fonts.gstatic.com"];
+// Web fonts are the only third-party files the page needs; served stale while refreshing.
+const CDN_HOSTS = ["fonts.googleapis.com", "fonts.gstatic.com"];
 const cacheable = (res) => res.ok || res.type === "opaque";
 
 function staleWhileRevalidate(event) {

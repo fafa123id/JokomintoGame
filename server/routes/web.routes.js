@@ -24,8 +24,8 @@ router.use("/src", express.static(publicFile("src"), staticOptions));
 router.use("/asset", express.static(publicFile("asset"), staticOptions));
 router.get("/", sendCode("index.html"));
 router.get("/index.js", sendCode("index.js"));
-// The worker's own requests follow this policy: it may only refresh the app and its style/font CDNs.
-const SW_CSP = "default-src 'none'; connect-src 'self' https://cdn.tailwindcss.com https://fonts.googleapis.com https://fonts.gstatic.com";
+// The worker's own requests follow this policy: it may only refresh the app and its font CDN.
+const SW_CSP = "default-src 'none'; connect-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com";
 router.get("/sw.js", (req, res, next) => {
   res.setHeader("Content-Security-Policy", SW_CSP);
   sendCode("sw.js")(req, res, next);

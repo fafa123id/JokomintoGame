@@ -28,3 +28,6 @@ Thumbs.db
 .idea/
 .claude/
 .previous_image
+
+# Built by npm run build:css (also during the Docker build)
+asset/vendor/tailwind.css

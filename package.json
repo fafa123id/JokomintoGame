@@ -13,7 +13,9 @@
     "db:migrate": "node server/scripts/db.js migrate",
     "db:seed": "node server/scripts/db.js seed",
     "db:fresh": "node server/scripts/db.js fresh",
-    "vapid": "node -e \"const k=require('web-push').generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey+'\\nVAPID_PRIVATE_KEY='+k.privateKey)\""
+    "vapid": "node -e \"const k=require('web-push').generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey+'\\nVAPID_PRIVATE_KEY='+k.privateKey)\"",
+    "build:css": "tailwindcss -c tailwind.config.js -i src/styles/tailwind.input.css -o asset/vendor/tailwind.css --minify",
+    "predev": "npm run build:css"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
@@ -27,5 +29,8 @@
     "jsonwebtoken": "^9.0.3",
     "sharp": "^0.35.5",
     "web-push": "^4.0.0"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
   }
 }
