@@ -89,7 +89,7 @@ export function initialState() {
 export function previewRewards(userId) {
   return {
     maxScore: baseFromDifficulty(TICTACTOE.difficulty),
-    maxCoin: Math.round(coinFactors(coinContext(userId)).effectiveBase),
+    maxCoin: COIN.base + Math.round(coinFactors(coinContext(userId)).effectiveBonus),
   };
 }
 
@@ -99,7 +99,7 @@ function settle(userId, session, board, outcome) {
   const ratio = outcome === "win" ? 1 : outcome === "draw" ? TICTACTOE.drawRatio : 0;
 
   const score = Math.round(base * performance * ratio);
-  const coin = ratio === 0 ? 0 : Math.max(COIN.min, Math.round(coinReward(coinContext(userId), performance).coin * ratio));
+  const coin = ratio === 0 ? 0 : Math.round(coinReward(coinContext(userId), performance).coin * ratio);
   if (!GameSession.finish(session.id, score)) throw HttpError.badRequest("Game session is not active");
 
   const pet = mutatePet(userId, (p) => {

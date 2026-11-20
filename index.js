@@ -11,10 +11,15 @@ import { initializeEventHandler } from "./src/eventHandler.js";
 import { initAccount } from "./src/account.js";
 import { initLeaderboard } from "./src/leaderboard.js";
 import { initPet } from "./src/pet.js";
+import { initPetting } from "./src/petting.js";
+import { registerServiceWorker } from "./src/notifications.js";
+import { initMusic } from "./src/music.js";
 import { applyMotionClass, initMotionToggle } from "./src/motion.js";
+import { initSoundToggle } from "./src/sound.js";
 import { initUi3d } from "./src/ui3d.js";
 import { initSkins } from "./src/skins.js";
 import { initTicTacToe } from "./src/Game/tictactoe.js";
+import { initChess } from "./src/Game/chess.js";
 
 function init() {
   ["hygiene", "hunger", "mood", "coin", "word"].forEach((k) => localStorage.removeItem(k));
@@ -28,12 +33,17 @@ init(); //inisialisasi context
 document.addEventListener("DOMContentLoaded", function () {
   applyMotionClass();
   initPet();
+  initPetting();
+  registerServiceWorker();
+  initMusic();
   initAccount();
   initLeaderboard();
   initSkins();
   initMotionToggle();
+  initSoundToggle();
   initUi3d();
   initTicTacToe();
+  initChess();
   
   // Initialize RxJS Event Handler
   initializeEventHandler();

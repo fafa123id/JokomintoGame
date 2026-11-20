@@ -3,9 +3,14 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>JokomintoGame - Virtual Pet</title>
     <link rel="icon" href="/asset/icon.png" type="image/png">
+    <link rel="manifest" href="/asset/pwa/manifest.webmanifest">
+    <meta name="theme-color" content="#764ba2">
+    <link rel="apple-touch-icon" href="/asset/pwa/icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Jokominto">
     <!-- Tambahkan Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1130,6 +1135,11 @@
                         <span class="text-2xl sm:text-2xl mr-2">❌</span>Tic Tac Toe vs Joko
                     </button>
                     <button
+                        class="bg-gradient-to-r from-slate-600 to-slate-800 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="chess">
+                        <span class="text-2xl sm:text-2xl mr-2">♟️</span>Chess vs Joko
+                    </button>
+                    <button
                         class="bg-gradient-to-r from-red-500 to-red-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
                         data-action="home">
                         <span class="text-2xl sm:text-2xl mr-2">🔙</span>Back
@@ -1284,6 +1294,44 @@
                     </button>
                 </div>
                 <!-- Tebak Kata Game - Spacing Diperbaiki -->
+                <div id="chessGame"
+                    class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl" style="display: none">
+                    <div class="flex justify-center items-center w-full mt-10">
+                        <div class="w-40 h-40 flex items-center justify-center">
+                            <img id="charChess" src="/asset/char/idle.png" alt="Joko"
+                                class="max-w-full max-h-full object-contain">
+                        </div>
+                    </div>
+
+                    <div class="bg-white/95 backdrop-blur-sm p-4 sm:p-6 rounded-3xl card-shadow">
+                        <div class="text-center mb-4">
+                            <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-1">♟️ Chess</h1>
+                            <p class="text-gray-600 text-sm sm:text-base">You are White, Joko is Black</p>
+                        </div>
+
+                        <div class="bg-gradient-to-r from-slate-600 to-slate-800 text-white p-3 rounded-2xl text-center mb-4">
+                            <p id="chessStatus" class="font-bold text-lg">Your turn!</p>
+                            <p class="text-sm font-semibold opacity-90">🏅 up to <span id="chessPoints">-</span> pts · 🪙 up to
+                                <span id="chessCoins">-</span></p>
+                        </div>
+
+                        <div id="chessBoard" class="chess-board mx-auto mb-5" role="grid" aria-label="Chess board"></div>
+
+                        <button data-action="chess-again"
+                            class="hidden w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-3">
+                            <span class="text-xl mr-2">🔄</span>Play Again
+                        </button>
+                        <button data-action="chess-resign"
+                            class="w-full bg-gradient-to-r from-rose-400 to-rose-500 text-white p-3 rounded-2xl font-bold btn-hover mb-3">
+                            <span class="text-xl mr-2">🏳️</span>Resign
+                        </button>
+                        <button data-action="home"
+                            class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
+                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                        </button>
+                    </div>
+                </div>
+
                 <div id="xoxGame"
                     class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl" style="display: none">
                     <div class="flex justify-center items-center w-full mt-10">
@@ -1377,7 +1425,7 @@
                         <!-- Hint Button - Spacing Diperbaiki -->
                         <button data-action="reveal-hint"
                             class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover mb-4">
-                            <span class="text-xl sm:text-xl mr-2">💡</span>Hint (-20 Coin)
+                            <span class="text-xl sm:text-xl mr-2">💡</span>Hint (-<span data-hint-cost>80</span> Coin)
                         </button>
 
                         <!-- Back Button - Spacing Diperbaiki -->
@@ -1417,20 +1465,43 @@
 
                         <!-- Image Container with Grid Overlay -->
                         <div class="relative mb-5 bg-gray-200 rounded-2xl overflow-hidden" style="aspect-ratio: 1;">
-                            <!-- Background Image -->
-                            <img id="gameImage" src="" alt="Guess this image" class="w-full h-full object-cover">
-
-                            <!-- Grid Overlay (3x3) -->
-                            <div class="absolute inset-0 grid grid-cols-3 grid-rows-3">
-                                <div class="overlay-tile bg-black transition-all" data-index="0"></div>
-                                <div class="overlay-tile bg-black transition-all" data-index="1"></div>
-                                <div class="overlay-tile bg-black transition-all" data-index="2"></div>
-                                <div class="overlay-tile bg-black transition-all" data-index="3"></div>
-                                <div class="overlay-tile bg-black transition-all" data-index="4"></div>
-                                <div class="overlay-tile bg-black transition-all" data-index="5"></div>
-                                <div class="overlay-tile bg-black transition-all" data-index="6"></div>
-                                <div class="overlay-tile bg-black transition-all" data-index="7"></div>
-                                <div class="overlay-tile bg-black transition-all" data-index="8"></div>
+                            <div id="imageGrid" class="image-grid absolute inset-0" role="img" aria-label="Guess this image">
+                                <div class="image-cell" data-index="0">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
+                                <div class="image-cell" data-index="1">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
+                                <div class="image-cell" data-index="2">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
+                                <div class="image-cell" data-index="3">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
+                                <div class="image-cell" data-index="4">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
+                                <div class="image-cell" data-index="5">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
+                                <div class="image-cell" data-index="6">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
+                                <div class="image-cell" data-index="7">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
+                                <div class="image-cell" data-index="8">
+                                    <img class="tile-img" alt="" draggable="false">
+                                    <div class="overlay-tile bg-black"></div>
+                                </div>
                             </div>
                         </div>
                         <p id="imageCredit" class="hidden -mt-3 mb-4 text-xs text-gray-400 text-right">
@@ -1451,7 +1522,7 @@
                         <!-- Hint Button -->
                         <button data-action="reveal-tile" id="revealImageBtn"
                             class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-4">
-                            <span class="text-xl mr-2">🔍</span>Open Tile (-20 Coin)
+                            <span class="text-xl mr-2">🔍</span>Open Tile (-<span data-hint-cost>80</span> Coin)
                         </button>
 
                         <!-- Back Button -->

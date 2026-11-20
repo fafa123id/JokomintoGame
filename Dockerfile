@@ -20,7 +20,7 @@ RUN apk add --no-cache tini \
 
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
-COPY package.json index.html index.js ./
+COPY package.json index.html index.js sw.js ./
 COPY src ./src
 COPY asset ./asset
 COPY server ./server

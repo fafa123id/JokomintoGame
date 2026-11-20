@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { playPetScene, floatStats } from "../pet.js";
 import { sendEvent } from "../stateManager.js";
 import { feedCondition } from "../condition.js";
 import { showMessage, playSoundEffect, showOverlay, hideOverlay } from "../components.js";
@@ -28,18 +29,18 @@ async function buyFood(jenisMakanan) {
     return;
   }
 
-  const { name, cost, hunger } = res.food;
-  showOverlay(jenisMakanan + ".gif");
-  playSoundEffect("eat");
+  const { cost, hunger } = res.food;
   sendEvent("FOOD_SELECTED");
-
-  setTimeout(() => {
+  const sceneMs = playPetScene("eat", { food: jenisMakanan }, () => {
     sendEvent("FINISH_EAT");
     hideOverlay();
-  }, 2000);
-
-  const coinMessage = cost > 0 ? `, -${cost} coin` : " (free!)";
-  showMessage(`Nyam nyam... I eat ${name} (-${hunger} hunger${coinMessage})`, "success", 2000);
+    floatStats("charMain", [
+      { text: `-${hunger} 🍽️`, tone: "good" },
+      cost > 0 ? { text: `-${cost} 🪙`, tone: "bad" } : { text: "FREE", tone: "gold" },
+    ]);
+  });
+  if (!sceneMs) showOverlay(jenisMakanan + ".gif");
+  playSoundEffect("eat");
 }
 
 // Export functions

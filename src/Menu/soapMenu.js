@@ -1,4 +1,5 @@
 import { api } from "../api.js";
+import { playPetScene, floatStats } from "../pet.js";
 import { showMessage, playSoundEffect, showOverlay, hideOverlay } from "../components.js";
 
 import { sendEvent } from "../stateManager.js";
@@ -33,17 +34,18 @@ async function buySabun(jenisSabun) {
     return;
   }
 
-  const { name, cost, hygiene } = res.soap;
-  showOverlay(fx.overlay);
-  playSoundEffect(fx.sound);
+  const { cost, hygiene } = res.soap;
   sendEvent("SOAP_SELECTED");
-
-  setTimeout(() => {
+  const sceneMs = playPetScene("bath", { soap: jenisSabun }, () => {
     sendEvent("FINISH_BATH");
     hideOverlay();
-  }, 2000);
-
-  showMessage(`Byur-byur... ${name} used (+${hygiene} hygiene, -${cost} coin)`, "success", 2000);
+    floatStats("charMain", [
+      { text: `+${hygiene} 🧼`, tone: "good" },
+      cost > 0 ? { text: `-${cost} 🪙`, tone: "bad" } : { text: "FREE", tone: "gold" },
+    ]);
+  });
+  if (!sceneMs) showOverlay(fx.overlay);
+  playSoundEffect(fx.sound);
 }
 
 // Export functions

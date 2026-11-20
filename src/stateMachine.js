@@ -23,6 +23,9 @@ export const machine = createMachine({
     },
     idle: {
       on: {
+        ACTIVITY: {
+          target: "idle",
+        },
         PLAY: {
           target: "selectGame",
         },
@@ -148,6 +151,7 @@ export const machine = createMachine({
         backToMainMenuFromWord();
         returnToMenuFromImage();
         window.leaveTicTacToe?.();
+        window.leaveChess?.();
     },
     increaseHunger: () => updateContext(),
     increaseMood: () => updateContext(),

@@ -1,8 +1,10 @@
 import { sendEvent } from "../stateManager.js";
 import { api } from "../api.js";
-import { showMessage, playSoundEffect, updateContext } from "../components.js";
+import { showMessage, updateContext } from "../components.js";
+import { markSound, resultSound } from "./xoxSound.js";
 import { playCondition } from "../condition.js";
-import { react, say, hush, celebrate, sulk, confetti, stopReaction } from "../pet.js";
+import { react, say, hush, stopReaction, gameFx, floatStats } from "../pet.js";
+import { focusPet } from "./gameUi.js";
 
 const PET_IMG = "charXox";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -67,7 +69,7 @@ async function petWrites(cell) {
   await sleep(450);
   pencil.classList.add("is-writing");
   drawMark(cell, "O");
-  playSoundEffect("tick");
+  markSound("O");
   await sleep(420);
   pencil.classList.remove("is-writing");
   pencil.style.opacity = "0";
@@ -115,8 +117,8 @@ async function start() {
   el("xoxPoints").textContent = res.rewards.maxScore;
   el("xoxCoins").textContent = res.rewards.maxCoin;
   setStatus("Your turn! ❌");
-  say(PET_IMG, "Ayo main! 😼", 1800);
-  react(PET_IMG, "pet-jump", 600);
+  say(PET_IMG, "Ayo main! 😼", 1800, { mood: "happy" });
+  gameFx(PET_IMG, "ready");
   setBoardEnabled(true);
 }
 
@@ -126,28 +128,37 @@ function finish(res) {
   document.querySelector('[data-action="xox-again"]').classList.remove("hidden");
   updateContext();
 
-  const { coin = 0, score = 0 } = res.reward ?? {};
+  const { coin = 0, score = 0, mood = 0 } = res.reward ?? {};
+  const rewards = [
+    score && { text: `+${score} pts`, tone: "purple" },
+    coin && { text: `+${coin} 🪙`, tone: "gold" },
+    mood && { text: `${mood > 0 ? "+" : ""}${mood} 😊`, tone: mood > 0 ? "good" : "bad" },
+  ].filter(Boolean);
+
+  resultSound(res.status);
+  focusPet(PET_IMG);
+
   if (res.status === "win") {
     el(PET_IMG).src = "/asset/char/sad.png";
-    sulk(PET_IMG, "Nooo! You win 😭");
-    confetti();
+    gameFx(PET_IMG, "victory", { coins: Math.ceil(coin / 15), cheer: false });
+    say(PET_IMG, "Nooo! Kamu menang 😭", 2400, { mood: "sad" });
     setStatus(`You win! +${score} pts · +${coin} coin`);
-    showMessage(`You beat Joko! +${coin} coin, +${score} pts`, "success", 2500, true);
   } else if (res.status === "lose") {
     el(PET_IMG).src = "/asset/char/happy.png";
-    celebrate(PET_IMG, "Hehe, I win! 😎");
+    gameFx(PET_IMG, "victory", { coins: 0 });
+    say(PET_IMG, "Hehe, aku menang! 😎", 2400, { mood: "happy" });
     board().classList.add("is-shaking");
     setStatus("Joko wins! Try again?");
-    showMessage("Joko wins this round!", "error", 2000, true);
   } else if (res.status === "draw") {
-    say(PET_IMG, "Draw! 🤝", 2000);
-    react(PET_IMG, "pet-squish", 600);
+    gameFx(PET_IMG, "ready");
+    say(PET_IMG, "Seri! Tos dulu 🤝", 2200, { mood: "fresh" });
     setStatus(`Draw! +${score} pts · +${coin} coin`);
-    showMessage(`It's a draw! +${coin} coin, +${score} pts`, "success", 2500, true);
   } else {
+    gameFx(PET_IMG, "fail");
+    say(PET_IMG, "Waktu habis! ⏰", 2000, { mood: "sad" });
     setStatus("Time's up!");
-    showMessage("Time's up!", "error", 2000, true);
   }
+  if (rewards.length) floatStats(PET_IMG, rewards);
 }
 
 async function onCellClick(cell) {
@@ -155,7 +166,7 @@ async function onCellClick(cell) {
   busy = true;
   setBoardEnabled(false);
   drawMark(cell, "X");
-  playSoundEffect("tick");
+  markSound("X");
   react(PET_IMG, "pet-squish", 500);
 
   const res = await api("/api/game/move", { sessionId: session.sessionId, cell });

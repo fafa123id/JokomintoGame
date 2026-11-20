@@ -119,13 +119,18 @@ test("game answer is never exposed before the game ends", async () => {
   const g = await c("/api/game/start", { type: "image" });
   assert.equal(g.status, 200);
   assert.equal(g.body.answer, undefined);
-  assert.doesNotMatch(g.body.imageUrl, /car|house|bird|tree|flower|sun|moon/);
+  assert.doesNotMatch(g.body.tileUrl, /car|house|bird|tree|flower|sun|moon/);
   assert.equal(g.body.credit, null);
-  assert.equal((await c(g.body.imageUrl)).status, 200);
-  assert.equal((await client()(g.body.imageUrl)).status, 401);
+  const open = g.body.revealed[0];
+  const hidden = [...Array(9).keys()].find((i) => !g.body.revealed.includes(i));
+  assert.equal((await c(`${g.body.tileUrl}/${open}`)).status, 200);
+  assert.equal((await c(`${g.body.tileUrl}/${hidden}`)).status, 403);
+  assert.equal((await c(`${g.body.tileUrl}/9`)).status, 404);
+  assert.equal((await client()(`${g.body.tileUrl}/${open}`)).status, 401);
 
   const quit = await c("/api/game/end", { sessionId: g.body.sessionId });
   assert.equal(quit.body.answer, undefined);
+  assert.equal((await c(`${g.body.tileUrl}/${hidden}`)).status, 200);
 });
 
 test("wrong guesses are limited", async () => {
@@ -171,6 +176,120 @@ test("tic-tac-toe: server validates moves and plays back", async () => {
   assert.equal((await c("/api/game/move", { sessionId: g.body.sessionId, cell: 4 })).status, 400);
   assert.equal((await c("/api/game/move", { sessionId: g.body.sessionId, cell: 9 })).status, 422);
   assert.equal((await c("/api/game/move", { sessionId: g.body.sessionId, cell: "1" })).status, 422);
+});
+
+test("chess: server validates moves and Joko replies", async () => {
+  const c = await guest("Kasparov");
+  const g = await c("/api/game/start", { type: "chess" });
+  assert.equal(g.status, 200);
+  assert.ok(g.body.fen.startsWith("rnbqkbnr"));
+  const m = await c("/api/game/chess/move", { sessionId: g.body.sessionId, from: "e2", to: "e4" });
+  assert.equal(m.body.status, "playing");
+  assert.equal(m.body.playerMove.san, "e4");
+  assert.ok(m.body.petMove?.san);
+  assert.equal((await c("/api/game/chess/move", { sessionId: g.body.sessionId, from: "e4", to: "e8" })).status, 400);
+  assert.equal((await c("/api/game/chess/move", { sessionId: g.body.sessionId, from: "z9", to: "e8" })).status, 422);
+});
+
+test("memory: faces stay hidden until flipped and a solved board pays out", async () => {
+  const c = await guest("Memo");
+  const g = await c("/api/game/start", { type: "memory" });
+  assert.equal(g.status, 200);
+  assert.equal(g.body.cards, 16);
+  assert.equal(g.body.deck, undefined);
+  assert.doesNotMatch(JSON.stringify(g.body), /pizza|steak|roti/);
+  const flip = (index) => c("/api/game/memory/flip", { sessionId: g.body.sessionId, index });
+
+  const first = await flip(0);
+  assert.equal(first.body.status, "open");
+  assert.ok(first.body.face);
+  assert.equal((await flip(0)).status, 400);
+  assert.equal((await flip(16)).status, 422);
+
+  const known = new Map([[0, first.body.face]]);
+  const matched = new Set();
+  let open = 0;
+  let last = first.body;
+  const unknown = () => [...Array(16).keys()].find((i) => !known.has(i) && i !== open);
+  const partnerOf = (index) => [...known].find(([i, f]) => i !== index && !matched.has(i) && f === known.get(index))?.[0];
+  for (let guard = 0; last.status !== "win"; guard++) {
+    assert.ok(guard < 100);
+    let target;
+    if (open === null) {
+      const ready = [...known.keys()].find((i) => !matched.has(i) && partnerOf(i) !== undefined);
+      target = ready ?? unknown();
+    } else {
+      target = partnerOf(open) ?? unknown();
+    }
+    const res = await flip(target);
+    assert.equal(res.status, 200);
+    last = res.body;
+    known.set(target, last.face);
+    if (last.status === "open") {
+      open = target;
+      continue;
+    }
+    if (last.match) last.pair.forEach((i) => matched.add(i));
+    open = null;
+  }
+  assert.ok(last.reward.coin >= 100);
+  assert.ok(last.reward.score > 0);
+  assert.equal(last.reward.mood, 25);
+});
+
+test("simon: the sequence grows on success and a wrong move ends the game", async () => {
+  const c = await guest("Simone");
+  const g = await c("/api/game/start", { type: "simon" });
+  assert.equal(g.status, 200);
+  assert.equal(g.body.sequence.length, 2);
+  const press = (move) => c("/api/game/simon/press", { sessionId: g.body.sessionId, move });
+
+  let sequence = g.body.sequence;
+  for (let round = 0; round < 6; round++) {
+    let res;
+    for (const move of sequence) res = await press(move);
+    assert.equal(res.body.status, "round");
+    assert.equal(res.body.sequence.length, sequence.length + 1);
+    sequence = res.body.sequence;
+  }
+  const wrong = (sequence[0] + 1) % 4;
+  const over = await press(wrong);
+  assert.equal(over.body.status, "over");
+  assert.equal(over.body.outcome, "win");
+  assert.equal(over.body.expected, sequence[0]);
+  assert.ok(over.body.reward.coin >= 100);
+  assert.equal((await press(0)).status, 400);
+  assert.equal((await c("/api/game/simon/press", { sessionId: g.body.sessionId, move: 4 })).status, 422);
+});
+
+test("hint cost escalates within a round", async () => {
+  const c = await guest("Hinter");
+  const g = await c("/api/game/start", { type: "word" });
+  assert.equal(g.body.nextHintCost, 80);
+});
+
+test("playing costs 1 hunger and 1 hygiene", async () => {
+  const c = await guest("Player");
+  const g = await c("/api/game/start", { type: "word" });
+  assert.equal(g.body.pet.hunger, 1);
+  assert.equal(g.body.pet.hygiene, 99);
+});
+
+test("petting raises mood but is rate limited", async () => {
+  const c = await guest("Purr");
+  const first = await c("/api/pet/stroke", {});
+  assert.equal(first.status, 200);
+  const second = await c("/api/pet/stroke", {});
+  assert.equal(second.body.gained, 0);
+});
+
+test("push subscriptions only accept real push services", async () => {
+  const c = await guest("Pushy");
+  const evil = await c("/api/push/subscribe", {
+    subscription: { endpoint: "https://169.254.169.254/latest", keys: { p256dh: "abc", auth: "def" } },
+  });
+  assert.equal(evil.status, 400);
+  assert.equal((await c("/api/push/subscribe", { subscription: { endpoint: "http://x" } })).status, 422);
 });
 
 test("CSRF: non-JSON and foreign origin are rejected", async () => {

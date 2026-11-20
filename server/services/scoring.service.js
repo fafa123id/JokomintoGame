@@ -76,19 +76,21 @@ export function finalScore(base, penalties) {
 }
 
 export function coinFactors({ difficulty, recentWins, balance }) {
-  const base = COIN.minBase + (COIN.maxBase - COIN.minBase) * clamp01(difficulty);
+  const bonus = COIN.bonusMin + (COIN.bonusMax - COIN.bonusMin) * clamp01(difficulty);
   const fatigue = Math.max(COIN.fatigueFloor, (1 - COIN.fatigueRate) ** recentWins);
   const excess = Math.max(0, balance - COIN.wealthThreshold);
   const wealth = Math.max(COIN.wealthFloor, 1 - excess / COIN.wealthRange);
-  return { base, fatigue, wealth, effectiveBase: base * fatigue * wealth };
+  return { base: COIN.base, bonus, fatigue, wealth, effectiveBonus: bonus * fatigue * wealth };
 }
 
 export function coinReward(context, performance) {
   const factors = coinFactors(context);
+  const bonus = Math.round(factors.effectiveBonus * performance);
   return {
-    coin: Math.max(COIN.min, Math.round(factors.effectiveBase * performance)),
+    coin: COIN.base + bonus,
     breakdown: {
-      base: round2(factors.base),
+      base: COIN.base,
+      bonus,
       performance: round2(performance),
       fatigue: round2(factors.fatigue),
       wealth: round2(factors.wealth),
@@ -101,6 +103,6 @@ export function scoringRules() {
     timeStepSec: SCORE.timeStepSec,
     timeStepPenalty: SCORE.timeStepPenalty,
     floorRatio: SCORE.floorRatio,
-    coinMin: COIN.min,
+    coinFixed: COIN.base,
   };
 }

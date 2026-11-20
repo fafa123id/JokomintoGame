@@ -1,6 +1,6 @@
 import { motionEnabled } from "./motion.js";
 
-const PAGES = ["gameTitle", "optionButton", "menuGame", "menuSabun", "menuMakanan", "tebakKata", "tebakGambar", "xoxGame"];
+const PAGES = ["gameTitle", "optionButton", "menuGame", "menuSabun", "menuMakanan", "tebakKata", "tebakGambar", "xoxGame", "chessGame"];
 const TILT_TARGETS = ".mainScreen button.btn-hover, .mainScreen .card-shadow.rounded-3xl, .stat-bar";
 const MAX_TILT = 8;
 
@@ -39,7 +39,8 @@ export function initUi3d() {
   let active = null;
   document.addEventListener("pointermove", (event) => {
     if (event.pointerType !== "mouse") return;
-    const target = event.target.closest?.(TILT_TARGETS);
+    const onBoard = event.target.closest?.(".chess-board, .xox-board");
+    const target = onBoard ? null : event.target.closest?.(TILT_TARGETS);
     if (active && active !== target) {
       active.style.transform = "";
       active = null;

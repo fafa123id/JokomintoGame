@@ -24,6 +24,11 @@ const purgeGuests = () => {
 purgeGuests();
 setInterval(purgeGuests, config.guest.cleanupIntervalMs).unref();
 
+if (!config.isTest) {
+  const { startNeedsDecay } = await import("./jobs/needsDecay.job.js");
+  startNeedsDecay({ log: (message) => console.log(message) });
+}
+
 const server = createApp().listen(config.port, () => {
   console.log(`JokomintoGame listening on http://localhost:${config.port} (${config.env})`);
 });

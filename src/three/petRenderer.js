@@ -1,5 +1,8 @@
 import * as THREE from "/asset/vendor/three/three.module.min.js";
 import { motionEnabled } from "../motion.js";
+import { state } from "../api.js";
+import { perf, pixelRatio, frameGate } from "./perf.js";
+import { PetFx } from "./petFx.js";
 
 // Sprite space is 200 x 314, y pointing down (see pet.js). The mesh covers a padded box so
 // accessories that stick out (hats, wings) are kept; the canvas adds headroom for jumps.
@@ -7,7 +10,6 @@ const PLANE = { x: -30, y: -40, w: 260, h: 370 };
 const VIEW = { x: -60, y: -110, w: 320, h: 455 };
 const UNIT = 0.01;
 const FOV = 30;
-const SEGMENTS = { x: 84, y: 120 };
 
 const RIG = {
   earPivotL: [55, 74],
@@ -224,7 +226,7 @@ const MOOD_POSE = {
 };
 
 export class Pet3D {
-  constructor(sprite) {
+  constructor(sprite, { fx = false, detail = 1 } = {}) {
     this.sprite = sprite;
     this.img = sprite.querySelector("img");
     this.layers = {
@@ -242,7 +244,7 @@ export class Pet3D {
     });
     sprite.appendChild(this.canvas);
 
-    this.pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.pixelRatio = pixelRatio();
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true });
     this.renderer.setPixelRatio(this.pixelRatio);
     this.scene = new THREE.Scene();
@@ -291,7 +293,7 @@ export class Pet3D {
       side: THREE.DoubleSide,
       alphaToCoverage: true,
     });
-    this.body = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, SEGMENTS.x, SEGMENTS.y), material);
+    this.body = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, Math.round(perf.segments.x * detail), Math.round(perf.segments.y * detail)), material);
     this.body.frustumCulled = false;
 
     this.shadow = new THREE.Mesh(
@@ -329,6 +331,8 @@ export class Pet3D {
     this.action = null;
     this.nextIdle = performance.now() + rand(2000, 4000);
     this.expression = "idle";
+    this.ambientPose = { hungry: false };
+    this.fx = fx ? new PetFx(this, { ambient: fx === "ambient" }) : null;
 
     this.observeSources();
     this.compose();
@@ -466,6 +470,13 @@ export class Pet3D {
   applyPose(now, t, mood) {
     const s = this.springs;
     const pose = { earL: -mood.ears, earR: mood.ears, armL: 0, armR: 0, tilt: mood.tilt, headX: 0, headY: 0, lean: 0, squash: 0, shake: 0 };
+    if (this.ambientPose.hungry) {
+      pose.armL = -0.32;
+      pose.armR = 0.32;
+      pose.earL -= 0.12;
+      pose.earR += 0.12;
+      pose.headY = 2;
+    }
 
     const mode = this.mode?.name;
     const modeT = this.mode ? (now - this.mode.start) / 1000 : 0;
@@ -508,6 +519,38 @@ export class Pet3D {
         pose.earR = 0.3 + Math.sin(t * 11) * 0.35;
         this.wobble = Math.max(this.wobble, 0.3);
         break;
+      case "petted": {
+        const lean = THREE.MathUtils.clamp(this.pointer.x, -1, 1);
+        pose.tilt += lean * 0.14 + Math.sin(t * 1.8) * 0.03;
+        pose.headX = lean * 5 + Math.sin(t * 45) * 0.5;
+        pose.headY = 2;
+        pose.earL = 0.55 + Math.sin(t * 2.2) * 0.05;
+        pose.earR = -0.55 - Math.sin(t * 2.2) * 0.05;
+        pose.squash = 0.03 + Math.sin(t * 3) * 0.01;
+        pose.lean = lean * 0.05;
+        this.glance = { x: lean * 0.3, y: 0.5, until: now + 150, forced: true };
+        break;
+      }
+      case "scratch":
+        pose.armR = -1.15 + Math.sin(t * 22) * 0.22;
+        pose.tilt += 0.12 + Math.sin(t * 22) * 0.03;
+        pose.earR -= 0.25;
+        pose.earL += 0.1;
+        pose.headX = 2;
+        this.glance = { x: 0.6, y: -0.6, until: now + 150, forced: true };
+        break;
+      case "sigh": {
+        const env = Math.sin(Math.min(1, modeT / 1.3) * Math.PI);
+        pose.squash = 0.07 * env;
+        pose.headY = 5 * env;
+        pose.tilt += 0.06 * env;
+        pose.earL += 0.3 * env;
+        pose.earR -= 0.3 * env;
+        pose.armL = -0.15 * env;
+        pose.armR = 0.15 * env;
+        this.glance = { x: 0, y: 0.9, until: now + 150, forced: true };
+        break;
+      }
       case "think":
         pose.tilt += 0.16 + Math.sin(t * 3) * 0.04;
         pose.armR = -0.7 + Math.sin(t * 5) * 0.06;
@@ -612,6 +655,7 @@ export class Pet3D {
       }
     }
     if (this.mode?.name === "dizzy") b.value = 0.55;
+    if (this.mode?.name === "petted") b.value = 0.92;
     this.uniforms.uBlink.value = b.value;
   }
 
@@ -654,7 +698,16 @@ export class Pet3D {
     this.shadow.material.opacity = shadowScale;
     this.shadow.position.x = s.shake.value + s.turn.value * 0.1;
 
+    this.fx?.update(now, dt, state.pet);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  playScene(name, data, onDone) {
+    if (!this.fx) {
+      onDone?.();
+      return;
+    }
+    this.fx.play(name, data, onDone);
   }
 
   dispose() {
@@ -666,7 +719,6 @@ export class Pet3D {
 
 const pets = new Set();
 let running = false;
-let last = 0;
 
 function isVisible(element) {
   if (!element.isConnected || element.offsetParent === null) return false;
@@ -674,15 +726,27 @@ function isVisible(element) {
   return rect.width > 0 && rect.bottom > 0 && rect.top < window.innerHeight;
 }
 
+const gate = frameGate();
+
+const IDLE_FRAME_MS = 1000 / Math.min(30, perf.fps);
+
+// Calm pets (just breathing/blinking) render at a reduced rate; active ones at full rate.
+function isBusy(pet) {
+  if (pet.fx?.active || pet.mode || pet.action || pet.blink.start) return true;
+  const s = pet.springs;
+  return Math.abs(s.jump.velocity) + Math.abs(s.squash.velocity) + Math.abs(s.headTilt.velocity) > 0.05 || pet.wobble > 0.01;
+}
+
 function loop(time) {
-  const dt = Math.min(0.033, (time - last) / 1000 || 0.016);
-  last = time;
-  if (!document.hidden) {
-    for (const pet of pets) {
-      if (isVisible(pet.sprite)) pet.update(time, dt);
-    }
-  }
   requestAnimationFrame(loop);
+  if (document.hidden || !gate(time)) return;
+  for (const pet of pets) {
+    if (!isVisible(pet.sprite)) continue;
+    const since = time - (pet.lastFrame ?? 0);
+    if (!isBusy(pet) && since < IDLE_FRAME_MS) continue;
+    pet.lastFrame = time;
+    pet.update(time, Math.min(0.05, since / 1000 || 0.016));
+  }
 }
 
 export function supports3D() {
@@ -695,9 +759,9 @@ export function supports3D() {
   }
 }
 
-export function attachPet3D(sprite) {
+export function attachPet3D(sprite, options) {
   if (sprite._pet3d) return sprite._pet3d;
-  const pet = new Pet3D(sprite);
+  const pet = new Pet3D(sprite, options);
   sprite._pet3d = pet;
   sprite.classList.add("is-3d");
   pets.add(pet);

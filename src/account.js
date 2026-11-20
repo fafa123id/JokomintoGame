@@ -1,6 +1,7 @@
 import { api, state, setPet } from "./api.js";
 import { updateChar, updateContext, showMessage } from "./components.js";
 import { openModal, closeModal, html, ui } from "./modal.js";
+import { notificationButton } from "./notifications.js";
 
 let googleClientId = null;
 let googleInitialized = false;
@@ -169,6 +170,7 @@ function showAccountView() {
   } else {
     button("Logout", ui.danger, logout);
   }
+  actions.insertBefore(notificationButton(), actions.firstChild);
   openModal(view);
 }
 
@@ -225,12 +227,12 @@ function renderAccountBadge() {
 
 function buildToolbar() {
   const bar = html(`
-    <div class="fixed bottom-5 left-5 z-30 flex gap-2">
+    <div class="app-dock">
       <button type="button" data-open-leaderboard aria-label="Leaderboard"
         class="h-12 w-12 rounded-full bg-white/90 text-xl shadow-lg hover:bg-white">🏆</button>
       <button type="button" data-open-account
         class="h-12 px-4 rounded-full bg-white/90 text-sm font-semibold text-gray-700 shadow-lg hover:bg-white flex items-center gap-2">
-        <span>👤</span><span id="accountLabel" class="max-w-[9rem] truncate">Login</span>
+        <span>👤</span><span id="accountLabel" class="dock-label max-w-[9rem] truncate">Login</span>
       </button>
     </div>`);
   bar.querySelector("[data-open-account]").addEventListener("click", () => {

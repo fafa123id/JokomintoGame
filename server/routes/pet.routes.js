@@ -10,5 +10,6 @@ router.use(requireAuth);
 router.get("/", pet.show);
 router.post("/feed", validate(feedSchema), pet.feed);
 router.post("/bathe", validate(batheSchema), pet.bathe);
+router.post("/stroke", pet.stroke);
 
 export default router;

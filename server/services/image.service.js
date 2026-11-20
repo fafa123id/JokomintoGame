@@ -64,15 +64,33 @@ async function pruneCache() {
   await Promise.all(stats.slice(0, excess).map(({ f }) => fs.rm(path.join(paths.imageCache, f), { force: true })));
 }
 
-async function download(hit) {
+const DOWNLOAD_BACKOFF_MS = 10 * 60 * 1000;
+const REUSE_CHANCE = 0.65;
+const MIN_CACHED_PER_WORD = 3;
+let downloadsBlockedUntil = 0;
+
+// Cached files are named pixabay-<word>-<id>.<ext> so they can be reused as puzzles.
+const CACHED_NAME = /^pixabay-([a-z]+)-\d+\.(jpg|png|webp)$/;
+
+async function cachedImages() {
+  const files = await fs.readdir(paths.imageCache).catch(() => []);
+  return files.map((file) => ({ file, word: file.match(CACHED_NAME)?.[1] })).filter((f) => f.word);
+}
+
+async function download(hit, word) {
   await fs.mkdir(paths.imageCache, { recursive: true });
   for (const ext of Object.values(ALLOWED_TYPES)) {
-    const name = `pixabay-${hit.id}${ext}`;
+    const name = `pixabay-${word}-${hit.id}${ext}`;
     if (await fs.stat(path.join(paths.imageCache, name)).catch(() => null)) return name;
   }
+  if (Date.now() < downloadsBlockedUntil) throw new Error("Pixabay downloads are cooling down");
 
   const res = await fetch(hit.url, { signal: AbortSignal.timeout(8000), redirect: "follow" });
-  if (!res.ok || !isPixabayHost(res.url)) throw new Error("Image download failed");
+  if (res.status === 429) {
+    downloadsBlockedUntil = Date.now() + DOWNLOAD_BACKOFF_MS;
+    throw new Error("Pixabay rate limit reached, reusing cached images for a while");
+  }
+  if (!res.ok || !isPixabayHost(res.url)) throw new Error(`Image download failed (${res.status})`);
 
   const type = (res.headers.get("content-type") || "").split(";")[0].trim();
   const ext = ALLOWED_TYPES[type];
@@ -83,7 +101,7 @@ async function download(hit) {
   const buffer = Buffer.from(await res.arrayBuffer());
   if (buffer.length > config.pixabay.maxImageBytes) throw new Error("Image too large");
 
-  const name = `pixabay-${hit.id}${ext}`;
+  const name = `pixabay-${word}-${hit.id}${ext}`;
   const tmp = path.join(paths.imageCache, `${name}.${crypto.randomUUID()}.tmp`);
   await fs.writeFile(tmp, buffer);
   await fs.rename(tmp, path.join(paths.imageCache, name));
@@ -91,12 +109,28 @@ async function download(hit) {
   return name;
 }
 
+const cachedPuzzle = ({ file, word }) => ({ answer: word, imageFile: `cache/${file}`, revealed: randomTiles(IMAGE_REVEAL_TILES) });
+
 async function fromPixabay() {
   const word = IMAGE_WORDS[crypto.randomInt(IMAGE_WORDS.length)];
-  const hits = await searchPixabay(word);
-  if (hits.length === 0) throw new Error(`No Pixabay results for "${word}"`);
-  const file = await download(hits[crypto.randomInt(hits.length)]);
-  return { answer: word, imageFile: `cache/${file}`, revealed: randomTiles(IMAGE_REVEAL_TILES) };
+  const cached = await cachedImages();
+  const forWord = cached.filter((c) => c.word === word);
+  const coolingDown = Date.now() < downloadsBlockedUntil;
+
+  if (forWord.length && (coolingDown || (forWord.length >= MIN_CACHED_PER_WORD && Math.random() < REUSE_CHANCE))) {
+    return cachedPuzzle(forWord[crypto.randomInt(forWord.length)]);
+  }
+  try {
+    if (coolingDown) throw new Error("Pixabay downloads are cooling down");
+    const hits = await searchPixabay(word);
+    if (hits.length === 0) throw new Error(`No Pixabay results for "${word}"`);
+    const file = await download(hits[crypto.randomInt(hits.length)], word);
+    return cachedPuzzle({ file, word });
+  } catch (err) {
+    const fallback = forWord.length ? forWord : cached;
+    if (fallback.length) return cachedPuzzle(fallback[crypto.randomInt(fallback.length)]);
+    throw err;
+  }
 }
 
 function fromLocal() {

@@ -22,7 +22,7 @@ export function createPointsTicker(elementId, coinElementId) {
       const factor = Math.max(points.floorRatio, timeFactor * points.nonTimeFactor);
       el.textContent = Math.round(points.base * factor);
       const coinEl = coinElement();
-      if (coinEl) coinEl.textContent = Math.max(points.coinMin, Math.round(points.coinBase * factor));
+      if (coinEl) coinEl.textContent = points.coinFixed + Math.round(points.coinBonus * factor);
     },
     reset() {
       points = null;

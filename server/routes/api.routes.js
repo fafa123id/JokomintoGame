@@ -6,6 +6,7 @@ import petRoutes from "./pet.routes.js";
 import gameRoutes from "./game.routes.js";
 import leaderboardRoutes from "./leaderboard.routes.js";
 import skinRoutes from "./skin.routes.js";
+import pushRoutes from "./push.routes.js";
 
 const router = Router();
 
@@ -15,6 +16,7 @@ router.use("/pet", petRoutes);
 router.use("/game", gameRoutes);
 router.use("/leaderboard", leaderboardRoutes);
 router.use("/skins", skinRoutes);
+router.use("/push", pushRoutes);
 router.use(notFound);
 
 export default router;

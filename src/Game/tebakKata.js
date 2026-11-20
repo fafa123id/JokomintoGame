@@ -1,31 +1,46 @@
 import { sendEvent } from "../stateManager.js";
-import { api } from "../api.js";
-import { showMessage, playSoundEffect, stopAudio } from "../components.js";
-import { createPointsTicker, scoreSummary } from "./points.js";
-import { celebrate, sulk } from "../pet.js";
+import { api, refreshPet } from "../api.js";
+import { showMessage, playSoundEffect, stopAudio, updateContext } from "../components.js";
+import { createPointsTicker } from "./points.js";
+import { createTimerBar, isLowTime, shake, renderWordTiles, renderLoadingTiles, focusPet, answerFeedback, createRoundTimers } from "./gameUi.js";
+import { say, gameFx, setNervous, floatStats } from "../pet.js";
+
+const PET = "charTebakKata";
+const charTebakKata = document.getElementById(PET);
+const points = createPointsTicker("wordPoints", "wordCoins");
+const timerBar = createTimerBar("time");
+const roundTimers = createRoundTimers();
 
 let session = null;
 let time = 20;
 let gameTimer = null;
 let busy = false;
-const charTebakKata = document.getElementById("charTebakKata");
-const points = createPointsTicker("wordPoints", "wordCoins");
+
+const wordDisplay = () => document.getElementById("wordDisplay");
+const input = () => document.getElementById("inputTebakKata");
+const form = () => document.getElementById("tebakKataForm");
+
+function showHintCost(cost) {
+  const label = document.querySelector('button[data-action="reveal-hint"] [data-hint-cost]');
+  if (label && cost) label.textContent = cost;
+}
 
 function setFormEnabled(enabled) {
-  document.getElementById("inputTebakKata").disabled = !enabled;
+  input().disabled = !enabled;
   document.getElementById("tebakKataForm").querySelector('button[type="submit"]').disabled = !enabled;
   document.querySelector('button[data-action="reveal-hint"]').disabled = !enabled;
 }
 
 async function pageTebakKata() {
+  roundTimers.clear();
   sendEvent("GAME_SELECTED");
   charTebakKata.src = "/asset/char/idle.png";
   document.getElementById("menuGame").style.display = "none";
   document.getElementById("tebakKata").style.display = "flex";
-  document.getElementById("wordDisplay").innerHTML = "Loading word...";
+  renderLoadingTiles(wordDisplay());
   setFormEnabled(false);
   resetTimer();
-  document.getElementById("time").innerHTML = "Loading...";
+  document.getElementById("time").textContent = "...";
 
   const res = await api("/api/game/start", { type: "word" });
   if (res.error) {
@@ -35,15 +50,17 @@ async function pageTebakKata() {
   }
   session = res;
   time = res.timeLeft;
+  showHintCost(res.nextHintCost);
   points.update(res.points);
+  updateContext();
   playSoundEffect("ding");
-  updateDisplay();
+  renderWordTiles(wordDisplay(), session.masked);
+  gameFx(PET, "ready");
+  say(PET, "Ayo tebak! 🤔", 1600, { mood: "happy" });
   setFormEnabled(true);
+  timerBar.start(time);
   startTimer();
-}
-
-function updateDisplay() {
-  if (session) document.getElementById("wordDisplay").textContent = session.masked.join(" ");
+  input().focus();
 }
 
 async function revealHint() {
@@ -51,50 +68,70 @@ async function revealHint() {
   busy = true;
   const res = await api("/api/game/hint", { sessionId: session.sessionId });
   busy = false;
-  if (res.result === "timeout") return onTimeUp(res.answer);
+  if (res.result === "timeout") return onRoundOver(res.answer, "timeout", res.reward?.mood);
   if (res.error) {
-    showMessage(res.error, "error", 1000, true);
+    say(PET, res.error.replace(/!$/, "") + " 😅", 1800, { mood: "sad" });
     return;
   }
   session.masked = res.masked;
+  showHintCost(res.nextHintCost);
   points.update(res.points);
-  showMessage("You've paid 20 coin for hint", "success", 1000);
+  updateContext();
   playSoundEffect("ding");
-  updateDisplay();
+  renderWordTiles(wordDisplay(), session.masked);
+  gameFx(PET, "hint");
+  say(PET, "Nih petunjuknya! 💡", 1500, { mood: "fresh" });
+  floatStats(PET, [{ text: `-${res.hintPaid} 🪙`, tone: "bad" }]);
 }
 
 const resetTimer = () => {
   time = 20;
-  document.getElementById("inputTebakKata").value = "";
+  input().value = "";
   stopTimer();
   points.reset();
+  timerBar.reset();
+  setNervous(PET, false);
 };
 
 const startTimer = () => {
   stopTimer();
-  document.getElementById("time").innerHTML = time;
+  document.getElementById("time").textContent = time;
   gameTimer = setInterval(async () => {
     time--;
     points.tick();
+    timerBar.set(time);
     playSoundEffect("tick");
+    setNervous(PET, isLowTime(time));
+    if (time === 5) say(PET, "Cepetan! ⏰", 1400, { mood: "hungry" });
     if (time <= 0) {
       stopTimer();
-      document.getElementById("time").innerHTML = "0";
+      document.getElementById("time").textContent = "0";
       const res = session ? await api("/api/game/end", { sessionId: session.sessionId }) : {};
-      onTimeUp(res.answer);
+      onRoundOver(res.answer, "timeout", res.reward?.mood);
     } else {
-      document.getElementById("time").innerHTML = time;
+      document.getElementById("time").textContent = time;
     }
   }, 1000);
 };
 
-function onTimeUp(answer) {
+function onRoundOver(answer, reason, moodGain = 0) {
+  if (moodGain) {
+    floatStats(PET, [{ text: `+${moodGain} 😊`, tone: "good" }]);
+    refreshPet().then(updateContext);
+  }
   stopTimer();
+  setNervous(PET, false);
   session = null;
   setFormEnabled(false);
-  showMessage(`Time up!${answer ? ` The word is ${answer}!` : ""}`, "error", 2000, true);
   charTebakKata.src = "/asset/char/wrong.png";
-  setTimeout(() => sendEvent("BACK"), 2000);
+  if (answer) renderWordTiles(wordDisplay(), [...answer], { state: "answer" });
+  playSoundEffect("error");
+  answerFeedback(form(), answer ? `✗ Jawabannya: ${answer.toUpperCase()}` : "✗ Waktu habis", "bad");
+  focusPet(PET);
+  gameFx(PET, "fail");
+  const lead = reason === "timeout" ? "Waktu habis!" : "Kesempatan habis!";
+  say(PET, answer ? `${lead} Jawabannya ${answer.toUpperCase()} 😢` : `${lead} 😢`, 2600, { mood: "sad" });
+  roundTimers.later(() => sendEvent("BACK"), 2800);
 }
 
 const stopTimer = () => {
@@ -106,8 +143,8 @@ const stopTimer = () => {
 };
 
 const tebakKataSubmit = async () => {
-  const input = document.getElementById("inputTebakKata");
-  const guess = input.value.trim().toLowerCase();
+  const field = input();
+  const guess = field.value.trim().toLowerCase();
   if (!session || busy || !guess) return;
 
   busy = true;
@@ -116,40 +153,49 @@ const tebakKataSubmit = async () => {
 
   if (res.result === "win") {
     session = null;
-    resetTimer();
-    charTebakKata.src = "/asset/char/happy.png";
-    celebrate("charTebakKata", "Yeay, benar! 🎉");
-    sendEvent("WIN");
-    showMessage(
-      `Correct! +${res.reward.coin} coin, +${res.reward.mood} mood, ${scoreSummary(res.scoring)}`,
-      "success",
-      3000,
-      true
-    );
-  } else if (res.result === "timeout") {
-    onTimeUp(res.answer);
-  } else if (res.result === "lose") {
     stopTimer();
-    session = null;
+    setNervous(PET, false);
     setFormEnabled(false);
-    charTebakKata.src = "/asset/char/wrong.png";
-    showMessage(`Too many wrong answers! The word is ${res.answer}`, "error", 2000, true);
-    setTimeout(() => sendEvent("BACK"), 2000);
+    updateContext();
+    charTebakKata.src = "/asset/char/happy.png";
+    renderWordTiles(wordDisplay(), [...guess], { state: "win" });
+    playSoundEffect("success");
+    answerFeedback(form(), "✓ Benar!", "good");
+    focusPet(PET);
+    gameFx(PET, "victory", { coins: Math.ceil(res.reward.coin / 15) });
+    say(PET, `Yeay, benar! +${res.reward.score} pts 🎉`, 2600, { mood: "happy" });
+    floatStats(PET, [
+      { text: `+${res.reward.score} pts`, tone: "purple" },
+      { text: `+${res.reward.coin} 🪙`, tone: "gold" },
+      { text: `+${res.reward.mood} 😊`, tone: "good" },
+    ]);
+    roundTimers.later(() => {
+      resetTimer();
+      sendEvent("WIN");
+    }, 2400);
+  } else if (res.result === "timeout") {
+    onRoundOver(res.answer, "timeout", res.reward?.mood);
+  } else if (res.result === "lose") {
+    onRoundOver(res.answer, "lose", res.reward?.mood);
   } else if (res.result === "wrong") {
     charTebakKata.src = "/asset/char/wrong.png";
-    sulk("charTebakKata", "Salah... 😣");
+    playSoundEffect("error");
+    answerFeedback(form(), `✗ Salah! Sisa ${res.attemptsLeft}x`, "bad");
+    gameFx(PET, "oops");
+    shake(field);
+    say(PET, `Salah... sisa ${res.attemptsLeft}x 😣`, 1600, { mood: "sad" });
     setTimeout(() => {
-      charTebakKata.src = "/asset/char/idle.png";
-    }, 2000);
+      if (session) charTebakKata.src = "/asset/char/idle.png";
+    }, 1600);
     points.update(res.points);
-    showMessage(`Wrong answer! ${res.attemptsLeft} attempt(s) left`, "error", 1500, true);
-    input.value = "";
+    field.value = "";
   } else if (res.error) {
     showMessage(res.error, "error", 1500, true);
   }
 };
 
 function backToMainMenuFromWord() {
+  roundTimers.clear();
   resetTimer();
   if (session) {
     api("/api/game/end", { sessionId: session.sessionId });

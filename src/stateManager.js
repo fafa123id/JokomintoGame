@@ -15,6 +15,8 @@ export function initializeStateMachine() {
 
   gameService = interpret(machine)
     .onTransition((state) => {
+      // ACTIVITY only restarts the idle-to-sleep timer.
+      if (state.event.type === "ACTIVITY") return;
     addDebugLog(`State: ${state.value}`);
       window.dispatchEvent(new CustomEvent("pet:state", { detail: state.value }));
       
@@ -44,6 +46,7 @@ function updateUIBasedOnState(state) {
   document.getElementById("tebakKata").style.display = "none";
   document.getElementById("tebakGambar").style.display = "none";
   document.getElementById("xoxGame").style.display = "none";
+  document.getElementById("chessGame").style.display = "none";
   document.getElementById("menuSabun").style.display = "none";
   document.getElementById("menuMakanan").style.display = "none";
   document.getElementById("MainCharDiv").style.display = "none";

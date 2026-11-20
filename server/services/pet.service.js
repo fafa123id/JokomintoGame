@@ -1,29 +1,15 @@
-import { transaction } from "../database/connection.js";
+import { transaction, getDb } from "../database/connection.js";
 import { Pet } from "../models/pet.model.js";
 import { HttpError } from "../utils/httpError.js";
-import { DECAY, DECAY_INTERVAL_MS, FOODS, SOAPS } from "../config/game.js";
+import { FOODS, SOAPS, PETTING } from "../config/game.js";
 
 const clamp = (value) => Math.max(0, Math.min(100, value));
-
-function applyDecay(pet) {
-  const ticks = Math.floor((Date.now() - pet.updated_at) / DECAY_INTERVAL_MS);
-  if (ticks > 0) {
-    pet.hygiene = clamp(pet.hygiene + DECAY.hygiene * ticks);
-    pet.hunger = clamp(pet.hunger + DECAY.hunger * ticks);
-    pet.mood = clamp(pet.mood + DECAY.mood * ticks);
-    pet.updated_at += ticks * DECAY_INTERVAL_MS;
-  }
-  return pet;
-}
+const HOUR_MS = 60 * 60 * 1000;
 
 export function getCurrentPet(userId) {
-  return transaction(() => {
-    const pet = Pet.findByUser(userId);
-    if (!pet) throw HttpError.notFound("Pet not found");
-    applyDecay(pet);
-    Pet.save(pet);
-    return pet;
-  });
+  const pet = Pet.findByUser(userId);
+  if (!pet) throw HttpError.notFound("Pet not found");
+  return pet;
 }
 
 // The mutator may throw an HttpError to abort and roll back.
@@ -35,6 +21,7 @@ export function mutatePet(userId, mutator) {
     pet.hygiene = clamp(pet.hygiene);
     pet.mood = clamp(pet.mood);
     pet.coin = Math.max(0, pet.coin);
+    pet.updated_at = Date.now();
     Pet.save(pet);
     return pet;
   });
@@ -65,4 +52,26 @@ export function bathe(userId, soapKey) {
     p.hygiene += soap.hygiene;
   });
   return { pet, soap };
+}
+
+// Petting: small mood gain per stroke, capped per rolling hour and rate-limited server side.
+export function strokePet(userId) {
+  return transaction(() => {
+    const now = Date.now();
+    const pet = getCurrentPet(userId);
+    if (now - pet.last_petted_at < PETTING.minIntervalMs) {
+      return { pet, gained: 0, capped: false };
+    }
+    const windowStart = now - pet.petting_window_start > HOUR_MS ? now : pet.petting_window_start;
+    const windowGain = windowStart === now ? 0 : pet.petting_window_gain;
+    const room = Math.max(0, PETTING.maxMoodPerHour - windowGain);
+    const gained = Math.min(PETTING.moodPerStroke, room, 100 - pet.mood);
+
+    pet.mood = clamp(pet.mood + gained);
+    Pet.save(pet);
+    getDb()
+      .prepare("UPDATE pets SET petting_window_start = ?, petting_window_gain = ?, last_petted_at = ? WHERE user_id = ?")
+      .run(windowStart, windowGain + gained, now, userId);
+    return { pet, gained, capped: room === 0 };
+  });
 }

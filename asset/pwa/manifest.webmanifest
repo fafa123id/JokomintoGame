@@ -1,0 +1,17 @@
+{
+  "name": "JokomintoGame - Virtual Pet",
+  "short_name": "Jokominto",
+  "description": "Take care of Joko, your virtual pet.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#764ba2",
+  "theme_color": "#764ba2",
+  "lang": "id",
+  "icons": [
+    { "src": "/asset/pwa/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/asset/pwa/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/asset/pwa/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

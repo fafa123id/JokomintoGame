@@ -5,19 +5,28 @@ const MEDALS = ["🥇", "🥈", "🥉"];
 
 function row({ rank, name, score, wins, isMe }) {
   const el = html(`
-    <li class="flex items-center gap-3 px-3 py-2 rounded-xl">
-      <span data-rank class="w-8 text-center font-bold text-gray-500"></span>
-      <span data-name class="flex-1 truncate text-gray-800"></span>
-      <span class="text-right">
-        <span data-score class="block font-bold text-gray-800"></span>
-        <span data-wins class="block text-xs text-gray-400"></span>
+    <li class="lb-row">
+      <span data-rank class="lb-rank"></span>
+      <span class="lb-name">
+        <span data-name class="lb-name-text"></span>
+      </span>
+      <span class="lb-score">
+        <span data-score class="lb-score-value"></span>
+        <span data-wins class="lb-score-wins"></span>
       </span>
     </li>`);
   el.querySelector("[data-rank]").textContent = MEDALS[rank - 1] ?? `#${rank}`;
-  el.querySelector("[data-name]").textContent = isMe ? `${name} (You)` : name;
+  el.querySelector("[data-name]").textContent = name;
   el.querySelector("[data-score]").textContent = score.toLocaleString();
   el.querySelector("[data-wins]").textContent = `${wins} wins`;
-  if (isMe) el.classList.add("bg-blue-50", "ring-1", "ring-blue-300");
+  if (rank <= 3) el.classList.add(`lb-row--top${rank}`);
+  if (isMe) {
+    el.classList.add("lb-row--me");
+    const chip = document.createElement("span");
+    chip.className = "lb-you";
+    chip.textContent = "YOU";
+    el.querySelector(".lb-name").appendChild(chip);
+  }
   return el;
 }
 
@@ -62,7 +71,7 @@ async function openLeaderboard() {
       <h2 class="${ui.title}">🏆 Leaderboard</h2>
       <p data-subtitle class="${ui.subtitle}">Loading...</p>
       <div data-me class="mb-4"></div>
-      <ol data-list class="space-y-1"></ol>
+      <ol data-list class="lb-list"></ol>
     </div>`);
   openModal(view);
 

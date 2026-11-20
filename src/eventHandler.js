@@ -21,6 +21,7 @@ import { pageTebakGambar } from "./Game/tebakGambar.js";
 import { showMenuMakanan, buyFood } from "./Menu/foodMenu.js";
 import { showMenuSabun, buySabun } from "./Menu/soapMenu.js";
 import { eventDebugger } from "./debug.js";
+import { petPlayIntro } from "./pet.js";
 
 class EventHandler {
   constructor() {
@@ -138,7 +139,7 @@ class EventHandler {
           debounceTime(100)
         );
 
-        this.safeSubscribe(gameMenu$, () => sendEvent("PLAY"), "GameMenu");
+        this.safeSubscribe(gameMenu$, () => petPlayIntro(() => sendEvent("PLAY")), "GameMenu");
       }
     } catch (error) {
       this.handleError(error, "NavigationEvents Setup");

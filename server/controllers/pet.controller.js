@@ -10,6 +10,11 @@ export function feed(req, res) {
   res.json({ pet: Pet.toPublic(pet), food });
 }
 
+export function stroke(req, res) {
+  const { pet, gained, capped } = petService.strokePet(req.user.id);
+  res.json({ pet: Pet.toPublic(pet), gained, capped });
+}
+
 export function bathe(req, res) {
   const { pet, soap } = petService.bathe(req.user.id, req.validated.soap);
   res.json({ pet: Pet.toPublic(pet), soap });

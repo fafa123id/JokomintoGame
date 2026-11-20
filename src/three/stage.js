@@ -1,4 +1,5 @@
 import * as THREE from "/asset/vendor/three/three.module.min.js";
+import { perf, pixelRatio, frameGate } from "./perf.js";
 
 const COUNT = { star: 10, coin: 9, heart: 7, bubble: 12 };
 const BOUNDS = { x: 9, y: 6, zNear: -2, zFar: -10 };
@@ -67,7 +68,8 @@ export class Stage {
     container.prepend(this.canvas);
 
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true, powerPreference: "low-power" });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    this.renderer.setPixelRatio(pixelRatio(Math.min(1.5, perf.pixelRatio)));
+    this.gate = frameGate(Math.min(perf.fps, 45));
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(50, 1, 0.1, 50);
     this.camera.position.set(0, 0, 6);
@@ -81,7 +83,7 @@ export class Stage {
     this.floaters = [];
     this.bursts = [];
     for (const [kind, count] of Object.entries(COUNT)) {
-      for (let i = 0; i < count; i++) this.floaters.push(this.spawnFloater(kind, true));
+      for (let i = 0; i < Math.max(2, Math.round(count * perf.floaters)); i++) this.floaters.push(this.spawnFloater(kind, true));
     }
 
     this.mood = { ...MOODS.default };
@@ -119,6 +121,8 @@ export class Stage {
 
   setMood(state) {
     this.targetMood = MOODS[state] ?? MOODS.default;
+    // Game screens cover the background, so freeze it to free the GPU for the game pet.
+    this.paused = state === "playing";
   }
 
   screenToWorld(x, y, z = 0) {
@@ -160,7 +164,7 @@ export class Stage {
 
   loop(time) {
     requestAnimationFrame((t) => this.loop(t));
-    if (document.hidden) return;
+    if (document.hidden || this.paused || !this.gate(time)) return;
     const dt = Math.min(0.05, (time - this.last) / 1000 || 0.016);
     this.last = time;
     const t = time / 1000;

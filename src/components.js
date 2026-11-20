@@ -1,3 +1,4 @@
+import { isMuted } from "./sound.js";
 import { state, refreshPet } from "./api.js";
 import { setExpression } from "./pet.js";
 // Global variable untuk menyimpan timeout reference
@@ -41,15 +42,25 @@ function showMessage($message, $type, $duration = 2000, needSound = false) {
 let timeoutId = null;
 
 function stopAudio() {
-  if (audio) {
+  const tick = document.getElementById("tick");
+  if (tick) tick.pause();
+  if (audio && audio.id === "tick") {
     audio.pause();
     audio.currentTime = 0;
   }
 }
 function playSoundEffect(soundId) {
+  if (isMuted()) return;
   const soundEffect = document.getElementById(soundId);
 
   if (!soundEffect) return;
+
+  // Ticks play on their own element so they never cut off (or get cut by) feedback sounds.
+  if (soundId === "tick") {
+    soundEffect.currentTime = 0;
+    soundEffect.play().catch(() => {});
+    return;
+  }
 
   // Stop sound sebelumnya kalau masih jalan
   if (timeoutId) {
@@ -65,6 +76,7 @@ function playSoundEffect(soundId) {
     timeoutId = setTimeout(() => {
       audio.pause();
       audio.currentTime = 0;
+      timeoutId = null;
     }, 2000);
   });
 }
@@ -218,7 +230,7 @@ const updateStatus = () => {
 
   const degradationInterval = setInterval(() => {
     if (state.user) refreshPet();
-  }, 8000);
+  }, 60000);
 
   // Cleanup function
   return () => {

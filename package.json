@@ -12,10 +12,12 @@
     "test": "node --test test/",
     "db:migrate": "node server/scripts/db.js migrate",
     "db:seed": "node server/scripts/db.js seed",
-    "db:fresh": "node server/scripts/db.js fresh"
+    "db:fresh": "node server/scripts/db.js fresh",
+    "vapid": "node -e \"const k=require('web-push').generateVAPIDKeys();console.log('VAPID_PUBLIC_KEY='+k.publicKey+'\\nVAPID_PRIVATE_KEY='+k.privateKey)\""
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "chess.js": "^1.4.0",
     "cookie-parser": "^1.4.7",
     "dotenv": "^18.0.10",
     "express": "^5.3.0",
@@ -23,6 +25,7 @@
     "google-auth-library": "^11.3.4",
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
-    "sharp": "^0.35.5"
+    "sharp": "^0.35.5",
+    "web-push": "^4.0.0"
   }
 }

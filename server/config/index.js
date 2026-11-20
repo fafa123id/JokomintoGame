@@ -34,6 +34,12 @@ const config = {
     cleanupIntervalMs: 6 * 60 * 60 * 1000,
   },
 
+  push: {
+    publicKey: process.env.VAPID_PUBLIC_KEY || "",
+    privateKey: process.env.VAPID_PRIVATE_KEY || "",
+    subject: process.env.VAPID_SUBJECT || "mailto:admin@example.com",
+  },
+
   pixabay: {
     apiKey: process.env.PIXABAY_API_KEY || "",
     searchCacheMs: 24 * 60 * 60 * 1000,

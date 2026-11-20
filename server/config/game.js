@@ -1,7 +1,19 @@
 export const INITIAL_PET = { hunger: 0, hygiene: 100, mood: 100, coin: 50 };
 
-export const DECAY_INTERVAL_MS = 8000;
-export const DECAY = { hygiene: -4, hunger: +5, mood: -6 };
+// Pou-style needs: a server job lowers every pet's stats on a fixed schedule while the server runs.
+export const NEEDS = {
+  decayEveryHours: Number(process.env.NEEDS_DECAY_HOURS) || 2,
+  step: { hygiene: -10, hunger: +10, mood: -10 },
+  alert: { hunger: 70, hygiene: 30, mood: 30 },
+  remindEveryHours: Number(process.env.NEEDS_REMIND_HOURS) || 6,
+};
+
+// Petting raises mood a little, capped per hour so it can't be farmed.
+export const PETTING = {
+  moodPerStroke: 2,
+  maxMoodPerHour: 20,
+  minIntervalMs: 1200,
+};
 
 export const FOODS = {
   biskuit: { name: "Cookies", cost: 0, hunger: 10 },
@@ -18,12 +30,46 @@ export const SOAPS = {
 };
 
 export const GAME = {
-  hungerOnStart: 10,
-  winMood: 40,
-  hintCost: 20,
-  wrongImageMoodPenalty: 5,
+  playCost: { hunger: 1, hygiene: 1 },
+  mood: {
+    word: { win: 20, lose: 10 },
+    image: { win: 25, lose: 10 },
+    memory: { win: 25, lose: 10 },
+    simon: { win: 30, lose: 10 },
+  },
+  hintCost: { base: 80, step: 20 },
   maxWrongGuesses: 3,
-  timeSec: { word: 20, image: 30, tictactoe: 120 },
+  timeSec: { word: 20, image: 30, tictactoe: 120, chess: 1200, memory: 120, simon: 600 },
+};
+
+export const MEMORY = {
+  faces: ["biskuit", "roti", "nasigoreng", "pizza", "steak", "normal", "fragrance", "premium"],
+  difficulty: 0.55,
+  parMoves: 12,
+  parSec: 40,
+  perExtraMovePenalty: 0.03,
+  perExtraSecPenalty: 0.004,
+  minPerformance: 0.4,
+};
+
+export const SIMON = {
+  moves: 4,
+  startLength: 2,
+  winRounds: 6,
+  maxRounds: 14,
+  difficulty: 0.65,
+  loseScoreRatio: 0.4,
+};
+
+export const CHESS = {
+  difficulty: 0.9,
+  searchDepth: 2,
+  mistakeRate: 0.15,
+  parMoves: 25,
+  perExtraMovePenalty: 0.01,
+  minPerformance: 0.5,
+  drawRatio: 0.5,
+  mood: { win: 30, draw: 20, lose: 10 },
 };
 
 export const TICTACTOE = {
@@ -32,7 +78,7 @@ export const TICTACTOE = {
   perExtraMovePenalty: 0.1,
   minPerformance: 0.5,
   drawRatio: 0.4,
-  mood: { win: 40, draw: 15, lose: -5 },
+  mood: { win: 20, draw: 15, lose: 10 },
 };
 
 export const SCORE = {
@@ -47,10 +93,11 @@ export const SCORE = {
   image: { detailWeight: 0.7, areaWeight: 0.3 },
 };
 
+// Every win pays COIN.base; the algorithm only scales the bonus on top.
 export const COIN = {
-  minBase: 100,
-  maxBase: 150,
-  min: 10,
+  base: 100,
+  bonusMin: 20,
+  bonusMax: 100,
   fatigueRate: 0.1,
   fatigueFloor: 0.3,
   fatigueWindowMs: 24 * 60 * 60 * 1000,
