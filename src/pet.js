@@ -453,13 +453,8 @@ async function enable3D() {
   const world = document.querySelector(".gradient-bg");
   if (world) createStage(world);
   for (const sprite of sprites()) {
-    try {
-      const main = sprite === spriteOf("charMain");
-      attachPet3D(sprite, { fx: main ? "ambient" : true, detail: main ? 1 : 0.6 });
-    } catch (err) {
-      console.warn("3D pet unavailable, using 2D sprite", err);
-      return;
-    }
+    const main = sprite === spriteOf("charMain");
+    attachPet3D(sprite, { fx: main ? "ambient" : true, detail: main ? 1 : 0.6 });
   }
   document.documentElement.classList.add("fx3d");
 }

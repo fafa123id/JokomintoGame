@@ -57,6 +57,14 @@ export const GameSession = {
       .attempts;
   },
 
+  // Image files of the player's latest picture rounds, newest first.
+  recentImages(userId, limit) {
+    return db()
+      .prepare("SELECT image_file FROM game_sessions WHERE user_id = ? AND type = 'image' AND image_file IS NOT NULL ORDER BY started_at DESC LIMIT ?")
+      .all(userId, limit)
+      .map((row) => row.image_file);
+  },
+
   countWinsSince(userId, since) {
     return db()
       .prepare(

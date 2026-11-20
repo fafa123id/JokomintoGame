@@ -109,42 +109,57 @@ async function download(hit, word) {
   return name;
 }
 
+const pick = (list) => list[crypto.randomInt(list.length)];
 const cachedPuzzle = ({ file, word }) => ({ answer: word, imageFile: `cache/${file}`, revealed: randomTiles(IMAGE_REVEAL_TILES) });
+const localPuzzle = (image) => ({ answer: image.answer, imageFile: `local/${image.file}`, revealed: [...image.revealPattern] });
 
-async function fromPixabay() {
-  const word = IMAGE_WORDS[crypto.randomInt(IMAGE_WORDS.length)];
+// Fresh candidates first; if the player has seen them all, the one seen longest ago.
+function leastRecent(candidates, recent) {
+  const fresh = candidates.filter((c) => !recent.includes(c.imageFile));
+  if (fresh.length) return pick(fresh);
+  return candidates.reduce((best, c) => (recent.indexOf(c.imageFile) > recent.indexOf(best.imageFile) ? c : best));
+}
+
+function fromCacheOrLocal(cached, recent) {
+  const candidates = [...cached.map(cachedPuzzle), ...IMAGES.map(localPuzzle)];
+  return leastRecent(candidates, recent);
+}
+
+async function fromPixabay(recent) {
+  const recentWords = new Set(recent.map((file) => file.match(/pixabay-([a-z]+)-/)?.[1]).filter(Boolean));
+  const words = IMAGE_WORDS.filter((w) => !recentWords.has(w));
+  const word = pick(words.length ? words : IMAGE_WORDS);
   const cached = await cachedImages();
-  const forWord = cached.filter((c) => c.word === word);
+  const forWord = cached.filter((c) => c.word === word && !recent.includes(`cache/${c.file}`));
   const coolingDown = Date.now() < downloadsBlockedUntil;
 
   if (forWord.length && (coolingDown || (forWord.length >= MIN_CACHED_PER_WORD && Math.random() < REUSE_CHANCE))) {
-    return cachedPuzzle(forWord[crypto.randomInt(forWord.length)]);
+    return cachedPuzzle(pick(forWord));
   }
+  if (coolingDown) return fromCacheOrLocal(cached, recent);
   try {
-    if (coolingDown) throw new Error("Pixabay downloads are cooling down");
     const hits = await searchPixabay(word);
     if (hits.length === 0) throw new Error(`No Pixabay results for "${word}"`);
-    const file = await download(hits[crypto.randomInt(hits.length)], word);
+    const file = await download(pick(hits), word);
     return cachedPuzzle({ file, word });
   } catch (err) {
-    const fallback = forWord.length ? forWord : cached;
-    if (fallback.length) return cachedPuzzle(fallback[crypto.randomInt(fallback.length)]);
-    throw err;
+    if (!config.isTest) console.warn(`[image] ${err.message}; serving a cached picture`);
+    return fromCacheOrLocal(cached, recent);
   }
 }
 
-function fromLocal() {
-  const image = IMAGES[crypto.randomInt(IMAGES.length)];
-  return { answer: image.answer, imageFile: `local/${image.file}`, revealed: [...image.revealPattern] };
+function fromLocal(recent) {
+  return leastRecent(IMAGES.map(localPuzzle), recent);
 }
 
-export async function pickImagePuzzle() {
-  if (!config.pixabay.apiKey) return fromLocal();
+// `recent` lists the player's latest image files (newest first) so a picture isn't repeated back to back.
+export async function pickImagePuzzle({ recent = [] } = {}) {
+  if (!config.pixabay.apiKey) return fromLocal(recent);
   try {
-    return await fromPixabay();
+    return await fromPixabay(recent);
   } catch (err) {
     if (!config.isTest) console.warn(`[image] falling back to local images: ${err.message}`);
-    return fromLocal();
+    return fromLocal(recent);
   }
 }
 

@@ -339,7 +339,8 @@ export class Pet3D {
   }
 
   observeSources() {
-    this.img.addEventListener("load", () => this.compose());
+    this.listeners = new AbortController();
+    this.img.addEventListener("load", () => this.compose(), { signal: this.listeners.signal });
     this.layerObserver = new MutationObserver(() => this.compose());
     for (const layer of Object.values(this.layers)) {
       this.layerObserver.observe(layer, { childList: true, subtree: true, attributes: true });
@@ -355,7 +356,7 @@ export class Pet3D {
     const token = (this.composeToken = (this.composeToken ?? 0) + 1);
     const scale = this.desiredTexScale();
     const [under, over] = await Promise.all([layerImage(this.layers.under, scale), layerImage(this.layers.over, scale)]);
-    if (token !== this.composeToken || !this.img.complete || !this.img.naturalWidth) return;
+    if (this.disposed || token !== this.composeToken || !this.img.complete || !this.img.naturalWidth) return;
 
     const canvas = this.composeCanvas;
     const width = Math.round(PLANE.w * scale);
@@ -747,9 +748,14 @@ export class Pet3D {
     this.fx.play(name, data, onDone);
   }
 
+  // Frees the WebGL context right away; phones only allow a handful at once.
   dispose() {
+    this.disposed = true;
+    this.listeners.abort();
     this.layerObserver.disconnect();
+    this.texture.dispose();
     this.renderer.dispose();
+    this.renderer.forceContextLoss();
     this.canvas.remove();
   }
 }
@@ -774,9 +780,56 @@ function isBusy(pet) {
   return Math.abs(s.jump.velocity) + Math.abs(s.squash.velocity) + Math.abs(s.headTilt.velocity) > 0.05 || pet.wobble > 0.01;
 }
 
+// Each 3D pet owns a WebGL context and mobile browsers drop the oldest ones past ~8,
+// so only pets on screen get a renderer; hidden ones are released after a short grace period.
+const MAX_ACTIVE = 3;
+const RELEASE_AFTER_MS = 1500;
+const managed = new Map();
+
+function release(entry) {
+  pets.delete(entry.pet);
+  entry.pet.dispose();
+  entry.pet = null;
+  entry.hiddenSince = 0;
+  entry.sprite.classList.remove("is-3d");
+}
+
+function ensurePet(entry) {
+  if (entry.pet) return entry.pet;
+  if (entry.failed || !isVisible(entry.sprite)) return null;
+  if (pets.size >= MAX_ACTIVE) {
+    const idle = [...managed.values()].find((e) => e.pet && !isVisible(e.sprite));
+    if (!idle) return null;
+    release(idle);
+  }
+  try {
+    entry.pet = new Pet3D(entry.sprite, entry.options);
+  } catch (err) {
+    entry.failed = true;
+    console.warn("3D pet unavailable, using 2D sprite", err);
+    return null;
+  }
+  entry.sprite.classList.add("is-3d");
+  pets.add(entry.pet);
+  return entry.pet;
+}
+
+function manage(time) {
+  for (const entry of managed.values()) {
+    if (isVisible(entry.sprite)) {
+      entry.hiddenSince = 0;
+      ensurePet(entry);
+    } else if (entry.pet) {
+      entry.hiddenSince ||= time;
+      if (time - entry.hiddenSince > RELEASE_AFTER_MS) release(entry);
+    }
+  }
+}
+
 function loop(time) {
   requestAnimationFrame(loop);
   if (document.hidden || !gate(time)) return;
+  manage(time);
   for (const pet of pets) {
     if (!isVisible(pet.sprite)) continue;
     const since = time - (pet.lastFrame ?? 0);
@@ -790,18 +843,21 @@ export function supports3D() {
   if (!motionEnabled()) return false;
   try {
     const canvas = document.createElement("canvas");
-    return !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+    const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+    // Release the probe context so it doesn't count against the browser's limit.
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
+    return !!gl;
   } catch {
     return false;
   }
 }
 
+// Registers a sprite; its renderer is created on first visible use and released when hidden.
 export function attachPet3D(sprite, options) {
-  if (sprite._pet3d) return sprite._pet3d;
-  const pet = new Pet3D(sprite, options);
-  sprite._pet3d = pet;
-  sprite.classList.add("is-3d");
-  pets.add(pet);
+  if (managed.has(sprite)) return;
+  const entry = { sprite, options, pet: null, hiddenSince: 0, failed: false };
+  managed.set(sprite, entry);
+  Object.defineProperty(sprite, "_pet3d", { configurable: true, get: () => ensurePet(entry) });
   if (!running) {
     running = true;
     window.addEventListener("pointermove", (e) => {
@@ -809,5 +865,4 @@ export function attachPet3D(sprite, options) {
     });
     requestAnimationFrame(loop);
   }
-  return pet;
 }

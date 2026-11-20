@@ -25,6 +25,8 @@ import { initialState as simonState, simonView } from "./simon.service.js";
 import { GAME, COIN } from "../config/game.js";
 
 const IMAGE_TILES = TILE_COUNT;
+// Pictures a player saw this recently are not served again while others are available.
+const RECENT_IMAGES = 20;
 
 const secondsLeft = (session) => Math.max(0, Math.ceil((session.expires_at - Date.now()) / 1000));
 
@@ -165,7 +167,7 @@ export async function startGame(userId, type) {
   } else if (type === "simon") {
     puzzle = { answer: "-", state: simonState() };
   } else {
-    const image = await pickImagePuzzle();
+    const image = await pickImagePuzzle({ recent: GameSession.recentImages(userId, RECENT_IMAGES) });
     const tileWeights = await tileDetailWeights(resolveImageFile(image.imageFile));
     puzzle = { ...image, scoring: { tileWeights } };
   }
