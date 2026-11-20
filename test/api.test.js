@@ -197,8 +197,10 @@ test("memory: faces stay hidden until flipped and a solved board pays out", asyn
   assert.equal(g.status, 200);
   assert.equal(g.body.cards, 16);
   assert.equal(g.body.deck, undefined);
-  assert.doesNotMatch(JSON.stringify(g.body), /pizza|steak|roti/);
+  assert.equal(g.body.preview.length, 16);
   const flip = (index) => c("/api/game/memory/flip", { sessionId: g.body.sessionId, index });
+  assert.equal((await flip(0)).status, 400);
+  await new Promise((resolve) => setTimeout(resolve, g.body.previewMs + 100));
 
   const first = await flip(0);
   assert.equal(first.body.status, "open");
@@ -244,6 +246,8 @@ test("simon: the sequence grows on success and a wrong move ends the game", asyn
   assert.equal(g.body.sequence.length, 2);
   const press = (move) => c("/api/game/simon/press", { sessionId: g.body.sessionId, move });
 
+  assert.equal((await c("/api/game/simon/finish", { sessionId: g.body.sessionId })).status, 400);
+
   let sequence = g.body.sequence;
   for (let round = 0; round < 6; round++) {
     let res;
@@ -260,6 +264,22 @@ test("simon: the sequence grows on success and a wrong move ends the game", asyn
   assert.ok(over.body.reward.coin >= 100);
   assert.equal((await press(0)).status, 400);
   assert.equal((await c("/api/game/simon/press", { sessionId: g.body.sessionId, move: 4 })).status, 422);
+});
+
+test("simon: a run can be cashed out after the winning round", async () => {
+  const c = await guest("Dancer");
+  const g = await c("/api/game/start", { type: "simon" });
+  let sequence = g.body.sequence;
+  for (let round = 0; round < 6; round++) {
+    let res;
+    for (const move of sequence) res = await c("/api/game/simon/press", { sessionId: g.body.sessionId, move });
+    sequence = res.body.sequence;
+  }
+  const done = await c("/api/game/simon/finish", { sessionId: g.body.sessionId });
+  assert.equal(done.body.status, "finished");
+  assert.equal(done.body.outcome, "win");
+  assert.equal(done.body.reward.rounds, 6);
+  assert.equal((await c("/api/game/simon/finish", { sessionId: g.body.sessionId })).status, 400);
 });
 
 test("hint cost escalates within a round", async () => {

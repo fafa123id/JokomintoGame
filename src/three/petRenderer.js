@@ -443,6 +443,10 @@ export class Pet3D {
       default:
         this.setMode(reaction.replace("pet-", ""), until, now);
         if (reaction === "pet-dizzy") s.lean.kick(2.5);
+        if (reaction === "pet-dance2") {
+          s.squash.kick(2.6);
+          s.jump.kick(6);
+        }
     }
   }
 
@@ -549,6 +553,39 @@ export class Pet3D {
         pose.armL = -0.15 * env;
         pose.armR = 0.15 * env;
         this.glance = { x: 0, y: 0.9, until: now + 150, forced: true };
+        break;
+      }
+      // Ikuti Joko moves: 0 left hand, 1 right hand, 2 jump, 3 sway.
+      case "dance0":
+      case "dance1": {
+        const side = mode === "dance0" ? 1 : -1;
+        const env = Math.sin(Math.min(1, modeT / 0.45) * Math.PI);
+        if (side > 0) pose.armL = 1.35 * env;
+        else pose.armR = -1.35 * env;
+        pose.lean = side * -0.1 * env;
+        pose.tilt -= side * 0.1 * env;
+        pose.earL -= 0.2 * env;
+        pose.earR += 0.2 * env;
+        this.glance = { x: -side * 0.8, y: -0.4, until: now + 150, forced: true };
+        break;
+      }
+      case "dance2": {
+        const env = Math.sin(Math.min(1, modeT / 0.45) * Math.PI);
+        pose.armL = 1.1 * env;
+        pose.armR = -1.1 * env;
+        pose.squash = -0.06 * env;
+        pose.earL -= 0.35 * env;
+        pose.earR += 0.35 * env;
+        break;
+      }
+      case "dance3": {
+        const env = Math.sin(Math.min(1, modeT / 0.45) * Math.PI);
+        pose.tilt += Math.sin(modeT * 26) * 0.2 * env;
+        pose.lean = Math.sin(modeT * 26) * 0.12 * env;
+        pose.armL = 0.6 * env;
+        pose.armR = -0.6 * env;
+        pose.earL = 0.3 * Math.sin(modeT * 26);
+        pose.earR = -0.3 * Math.sin(modeT * 26);
         break;
       }
       case "think":

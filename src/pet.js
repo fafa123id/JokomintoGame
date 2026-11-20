@@ -1,6 +1,9 @@
 import { state } from "./api.js";
-const SPRITE_IDS = ["charMain", "charHome", "charTebakKata", "charTebakGambar", "charXox", "charChess"];
-const REACTION_CLASSES = ["pet-squish", "pet-dizzy", "pet-chomp", "pet-wash", "pet-jump", "pet-shake", "pet-think", "pet-scratch", "pet-sigh"];
+const SPRITE_IDS = ["charMain", "charHome", "charTebakKata", "charTebakGambar", "charXox", "charChess", "charMemory", "charSimon"];
+const REACTION_CLASSES = [
+  "pet-squish", "pet-dizzy", "pet-chomp", "pet-wash", "pet-jump", "pet-shake", "pet-think", "pet-scratch", "pet-sigh",
+  "pet-dance0", "pet-dance1", "pet-dance2", "pet-dance3",
+];
 const SVG_NS = "http://www.w3.org/2000/svg";
 const SPRITE_PATH = /\/asset\/(?:char|skins\/[a-z]+)\/(\w+)\.png$/;
 

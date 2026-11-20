@@ -7,8 +7,17 @@ const PLAYLISTS = {
   image: ["image-1.ogg", "image-2.mp3"],
   xox: ["xox-1.mp3", "xox-2.mp3"],
   chess: ["chess-1.mp3", "chess-2.ogg"],
+  memory: ["memory-1.mp3", "memory-2.mp3"],
+  simon: ["simon-1.mp3", "simon-2.mp3"],
 };
-const GAME_VIEWS = { tebakKata: "word", tebakGambar: "image", xoxGame: "xox", chessGame: "chess" };
+const GAME_VIEWS = {
+  tebakKata: "word",
+  tebakGambar: "image",
+  xoxGame: "xox",
+  chessGame: "chess",
+  memoryGame: "memory",
+  simonGame: "simon",
+};
 const VOLUME = 0.32;
 const SLEEP_VOLUME = 0.12;
 const FADE_MS = 700;

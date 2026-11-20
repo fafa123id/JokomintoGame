@@ -14,12 +14,15 @@ import { initPet } from "./src/pet.js";
 import { initPetting } from "./src/petting.js";
 import { registerServiceWorker } from "./src/notifications.js";
 import { initMusic } from "./src/music.js";
+import { initOffline } from "./src/offline.js";
 import { applyMotionClass, initMotionToggle } from "./src/motion.js";
 import { initSoundToggle } from "./src/sound.js";
 import { initUi3d } from "./src/ui3d.js";
 import { initSkins } from "./src/skins.js";
 import { initTicTacToe } from "./src/Game/tictactoe.js";
 import { initChess } from "./src/Game/chess.js";
+import { initMemory } from "./src/Game/memory.js";
+import { initSimon } from "./src/Game/simon.js";
 
 function init() {
   ["hygiene", "hunger", "mood", "coin", "word"].forEach((k) => localStorage.removeItem(k));
@@ -36,6 +39,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initPetting();
   registerServiceWorker();
   initMusic();
+  initOffline();
   initAccount();
   initLeaderboard();
   initSkins();
@@ -44,6 +48,8 @@ document.addEventListener("DOMContentLoaded", function () {
   initUi3d();
   initTicTacToe();
   initChess();
+  initMemory();
+  initSimon();
   
   // Initialize RxJS Event Handler
   initializeEventHandler();

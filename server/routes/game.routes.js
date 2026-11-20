@@ -14,6 +14,7 @@ router.post("/move", validate(moveSchema), game.move);
 router.post("/chess/move", validate(chessMoveSchema), game.chessMove);
 router.post("/memory/flip", validate(memoryFlipSchema), game.memoryFlip);
 router.post("/simon/press", validate(simonPressSchema), game.simonPress);
+router.post("/simon/finish", validate(sessionSchema), game.simonFinish);
 router.post("/end", validate(sessionSchema), game.end);
 router.get("/image/:id/tile/:index", game.imageTile);
 

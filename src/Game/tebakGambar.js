@@ -18,6 +18,7 @@ let busy = false;
 
 const input = () => document.getElementById("inputTebakGambar");
 const form = () => document.getElementById("tebakGambarForm");
+const againButton = () => document.querySelector('[data-action="image-again"]');
 
 function updatePoints(next) {
   if (!next) return;
@@ -40,7 +41,8 @@ function setFormEnabled(enabled) {
 
 async function pageTebakGambar() {
   roundTimers.clear();
-  sendEvent("GAME_SELECTED");
+  if (window.getGameService?.()?.state.value !== "playing") sendEvent("GAME_SELECTED");
+  againButton().classList.add("hidden");
   charTebakGambar.src = "/asset/char/idle.png";
   document.getElementById("menuGame").style.display = "none";
   document.getElementById("tebakGambar").style.display = "flex";
@@ -165,7 +167,7 @@ function roundOver(answer, reason, moodGain = 0) {
   gameFx(PET, "fail");
   const lead = reason === "timeout" ? "Waktu habis!" : "Kesempatan habis!";
   say(PET, answer ? `${lead} Itu ${answer.toUpperCase()} 😢` : `${lead} 😢`, 2600, { mood: "sad" });
-  roundTimers.later(() => sendEvent("LOSE"), 2800);
+  againButton().classList.remove("hidden");
 }
 
 async function revealImageTile() {
@@ -193,6 +195,7 @@ document.getElementById("tebakGambarForm").addEventListener("submit", function (
   e.preventDefault();
   checkImageAnswer();
 });
+againButton().addEventListener("click", pageTebakGambar);
 
 async function checkImageAnswer() {
   const field = input();
@@ -221,7 +224,7 @@ async function checkImageAnswer() {
       { text: `+${res.reward.coin} 🪙`, tone: "gold" },
       { text: `+${res.reward.mood} 😊`, tone: "good" },
     ]);
-    roundTimers.later(() => sendEvent("WIN"), 2600);
+    againButton().classList.remove("hidden");
   } else if (res.result === "timeout") {
     roundOver(res.answer, "timeout", res.reward?.mood);
   } else if (res.result === "lose") {
@@ -246,6 +249,7 @@ async function checkImageAnswer() {
 
 function returnToMenuFromImage() {
   roundTimers.clear();
+  againButton()?.classList.add("hidden");
   clearTimer();
   setNervous(PET, false);
   if (session) {

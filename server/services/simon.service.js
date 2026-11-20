@@ -29,7 +29,7 @@ export function previewRewards(userId) {
     maxScore: baseFromDifficulty(SIMON.difficulty),
     maxCoin: COIN.base + Math.round(coinFactors(coinContext(userId)).effectiveBonus),
     winRounds: SIMON.winRounds,
-    maxRounds: SIMON.maxRounds,
+    fullScoreRounds: SIMON.fullScoreRounds,
   };
 }
 
@@ -41,11 +41,11 @@ export function simonView(session) {
   };
 }
 
-// Reaching winRounds is a win; every round past it raises the score up to maxRounds.
+// Reaching winRounds is a win; every round past it raises the score up to fullScoreRounds.
 export function outcomeOf(rounds) {
   const base = baseFromDifficulty(SIMON.difficulty);
   if (rounds >= SIMON.winRounds) {
-    const performance = Math.min(1, rounds / SIMON.maxRounds);
+    const performance = Math.min(1, rounds / SIMON.fullScoreRounds);
     return { outcome: "win", performance, score: Math.round(base * performance) };
   }
   const performance = rounds / SIMON.winRounds;
@@ -90,15 +90,26 @@ export function pressMove(userId, sessionId, move) {
       return { status: "ok", progress: state.progress };
     }
 
-    if (rounds + 1 >= SIMON.maxRounds) {
-      const { outcome, reward, pet } = settle(userId, session, rounds + 1);
-      return { status: "perfect", outcome, reward, pet };
-    }
-
     state.sequence.push(randomMove());
     state.progress = 0;
     GameSession.setState(session.id, state);
     return { status: "round", sequence: state.sequence, round: completedRounds(state) + 1 };
+  });
+}
+
+// Cash out a winning run; only allowed once winRounds are done.
+export function finishSimon(userId, sessionId) {
+  return transaction(() => {
+    const session = GameSession.find(sessionId, userId);
+    if (!session || session.type !== "simon" || session.finished) throw HttpError.badRequest("Game session is not active");
+    const rounds = completedRounds(session.state);
+    if (Date.now() > session.expires_at) {
+      const { outcome, reward, pet } = settle(userId, session, rounds);
+      return { status: "timeout", outcome, reward, pet };
+    }
+    if (rounds < SIMON.winRounds) throw HttpError.badRequest(`Finish at least ${SIMON.winRounds} rounds first`);
+    const { outcome, reward, pet } = settle(userId, session, rounds);
+    return { status: "finished", outcome, reward, pet };
   });
 }
 

@@ -19,10 +19,11 @@ let busy = false;
 const wordDisplay = () => document.getElementById("wordDisplay");
 const input = () => document.getElementById("inputTebakKata");
 const form = () => document.getElementById("tebakKataForm");
+const againButton = () => document.querySelector('[data-action="word-again"]');
 
 function showHintCost(cost) {
   const label = document.querySelector('button[data-action="reveal-hint"] [data-hint-cost]');
-  if (label && cost) label.textContent = cost;
+  if (label && cost !== undefined) label.textContent = cost;
 }
 
 function setFormEnabled(enabled) {
@@ -33,7 +34,8 @@ function setFormEnabled(enabled) {
 
 async function pageTebakKata() {
   roundTimers.clear();
-  sendEvent("GAME_SELECTED");
+  if (window.getGameService?.()?.state.value !== "playing") sendEvent("GAME_SELECTED");
+  againButton().classList.add("hidden");
   charTebakKata.src = "/asset/char/idle.png";
   document.getElementById("menuGame").style.display = "none";
   document.getElementById("tebakKata").style.display = "flex";
@@ -81,7 +83,7 @@ async function revealHint() {
   renderWordTiles(wordDisplay(), session.masked);
   gameFx(PET, "hint");
   say(PET, "Nih petunjuknya! 💡", 1500, { mood: "fresh" });
-  floatStats(PET, [{ text: `-${res.hintPaid} 🪙`, tone: "bad" }]);
+  if (res.hintPaid) floatStats(PET, [{ text: `-${res.hintPaid} 🪙`, tone: "bad" }]);
 }
 
 const resetTimer = () => {
@@ -131,7 +133,7 @@ function onRoundOver(answer, reason, moodGain = 0) {
   gameFx(PET, "fail");
   const lead = reason === "timeout" ? "Waktu habis!" : "Kesempatan habis!";
   say(PET, answer ? `${lead} Jawabannya ${answer.toUpperCase()} 😢` : `${lead} 😢`, 2600, { mood: "sad" });
-  roundTimers.later(() => sendEvent("BACK"), 2800);
+  againButton().classList.remove("hidden");
 }
 
 const stopTimer = () => {
@@ -163,16 +165,13 @@ const tebakKataSubmit = async () => {
     answerFeedback(form(), "✓ Benar!", "good");
     focusPet(PET);
     gameFx(PET, "victory", { coins: Math.ceil(res.reward.coin / 15) });
-    say(PET, `Yeay, benar! +${res.reward.score} pts 🎉`, 2600, { mood: "happy" });
+    say(PET, res.practice ? "Yeay, benar! 🎉" : `Yeay, benar! +${res.reward.score} pts 🎉`, 2600, { mood: "happy" });
     floatStats(PET, [
-      { text: `+${res.reward.score} pts`, tone: "purple" },
-      { text: `+${res.reward.coin} 🪙`, tone: "gold" },
-      { text: `+${res.reward.mood} 😊`, tone: "good" },
-    ]);
-    roundTimers.later(() => {
-      resetTimer();
-      sendEvent("WIN");
-    }, 2400);
+      res.reward.score && { text: `+${res.reward.score} pts`, tone: "purple" },
+      res.reward.coin && { text: `+${res.reward.coin} 🪙`, tone: "gold" },
+      res.reward.mood && { text: `+${res.reward.mood} 😊`, tone: "good" },
+    ].filter(Boolean));
+    againButton().classList.remove("hidden");
   } else if (res.result === "timeout") {
     onRoundOver(res.answer, "timeout", res.reward?.mood);
   } else if (res.result === "lose") {
@@ -196,6 +195,7 @@ const tebakKataSubmit = async () => {
 
 function backToMainMenuFromWord() {
   roundTimers.clear();
+  againButton()?.classList.add("hidden");
   resetTimer();
   if (session) {
     api("/api/game/end", { sessionId: session.sessionId });
@@ -209,6 +209,7 @@ document.addEventListener("DOMContentLoaded", function () {
     event.preventDefault();
     tebakKataSubmit();
   });
+  againButton().addEventListener("click", pageTebakKata);
 });
 
 export { pageTebakKata, backToMainMenuFromWord };

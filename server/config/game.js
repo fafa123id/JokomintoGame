@@ -39,10 +39,12 @@ export const GAME = {
   },
   hintCost: { base: 80, step: 20 },
   maxWrongGuesses: 3,
-  timeSec: { word: 20, image: 30, tictactoe: 120, chess: 1200, memory: 120, simon: 600 },
+  timeSec: { word: 20, image: 30, tictactoe: 120, chess: 1200, memory: 124, simon: 600 },
 };
 
 export const MEMORY = {
+  // Every card is shown face up this long at the start; the round clock runs after it.
+  previewSec: 4,
   faces: ["biskuit", "roti", "nasigoreng", "pizza", "steak", "normal", "fragrance", "premium"],
   difficulty: 0.55,
   parMoves: 12,
@@ -56,7 +58,8 @@ export const SIMON = {
   moves: 4,
   startLength: 2,
   winRounds: 6,
-  maxRounds: 14,
+  // Rounds are unlimited; the score stops growing here so long runs can't inflate it.
+  fullScoreRounds: 14,
   difficulty: 0.65,
   loseScoreRatio: 0.4,
 };

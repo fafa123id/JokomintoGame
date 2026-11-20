@@ -2,7 +2,7 @@ import * as gameService from "../services/game.service.js";
 import { playMove } from "../services/tictactoe.service.js";
 import { playChessMove } from "../services/chess.service.js";
 import { flipCard } from "../services/memory.service.js";
-import { pressMove } from "../services/simon.service.js";
+import { pressMove, finishSimon } from "../services/simon.service.js";
 
 export async function start(req, res) {
   res.json(await gameService.startGame(req.user.id, req.validated.type));
@@ -32,6 +32,10 @@ export function memoryFlip(req, res) {
 
 export function simonPress(req, res) {
   res.json(pressMove(req.user.id, req.validated.sessionId, req.validated.move));
+}
+
+export function simonFinish(req, res) {
+  res.json(finishSimon(req.user.id, req.validated.sessionId));
 }
 
 export function end(req, res) {

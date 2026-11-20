@@ -1126,7 +1126,7 @@
                     </button>
                     <button
                         class="bg-gradient-to-r from-indigo-500 to-purple-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                        data-action="tebak-gambar">
+                        data-action="tebak-gambar" data-online-only>
                         <span class="text-2xl sm:text-2xl mr-2">🖼️</span>Guess Picture
                     </button>
                     <button
@@ -1136,8 +1136,18 @@
                     </button>
                     <button
                         class="bg-gradient-to-r from-slate-600 to-slate-800 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
-                        data-action="chess">
+                        data-action="chess" data-online-only>
                         <span class="text-2xl sm:text-2xl mr-2">♟️</span>Chess vs Joko
+                    </button>
+                    <button
+                        class="bg-gradient-to-r from-amber-400 to-pink-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="memory">
+                        <span class="text-2xl sm:text-2xl mr-2">🃏</span>Memory Cards
+                    </button>
+                    <button
+                        class="bg-gradient-to-r from-teal-400 to-indigo-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
+                        data-action="simon">
+                        <span class="text-2xl sm:text-2xl mr-2">💃</span>Follow Joko
                     </button>
                     <button
                         class="bg-gradient-to-r from-red-500 to-red-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
@@ -1327,7 +1337,77 @@
                         </button>
                         <button data-action="home"
                             class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
-                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to games
+                        </button>
+                    </div>
+                </div>
+
+                <div id="memoryGame"
+                    class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl" style="display: none">
+                    <div class="flex justify-center items-center w-full mt-10">
+                        <div class="w-40 h-40 flex items-center justify-center">
+                            <img id="charMemory" src="/asset/char/idle.png" alt="Joko"
+                                class="max-w-full max-h-full object-contain">
+                        </div>
+                    </div>
+
+                    <div class="bg-white/95 backdrop-blur-sm p-4 sm:p-6 rounded-3xl card-shadow">
+                        <div class="text-center mb-4">
+                            <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-1">🃏 Memory Cards</h1>
+                            <p class="text-gray-600 text-sm sm:text-base">Flip two cards, find all 8 pairs</p>
+                        </div>
+                        <div class="bg-gradient-to-r from-amber-500 to-pink-500 text-white p-3 rounded-2xl text-center mb-4">
+                            <p id="memoryStatus" class="font-bold text-lg">Find the pairs!</p>
+                            <p class="text-sm font-semibold opacity-90">⏱️ <span id="memoryTime">-</span>s · 👆 <span id="memoryMoves">0</span> moves · 🪙 up to <span id="memoryCoins">-</span></p>
+                            <div id="memoryTimeBar" class="time-bar"><div class="time-bar-fill"></div></div>
+                        </div>
+                        <div id="memoryBoard" class="memory-board mx-auto mb-5" role="grid" aria-label="Memory cards"></div>
+                        <button data-action="memory-again"
+                            class="hidden w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-3">
+                            <span class="text-xl mr-2">🔄</span>Play Again
+                        </button>
+                        <button data-action="home"
+                            class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
+                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to games
+                        </button>
+                    </div>
+                </div>
+
+                <div id="simonGame"
+                    class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl" style="display: none">
+                    <div class="flex justify-center items-center w-full mt-10">
+                        <div class="w-40 h-40 flex items-center justify-center">
+                            <img id="charSimon" src="/asset/char/idle.png" alt="Joko"
+                                class="max-w-full max-h-full object-contain">
+                        </div>
+                    </div>
+
+                    <div class="bg-white/95 backdrop-blur-sm p-4 sm:p-6 rounded-3xl card-shadow">
+                        <div class="text-center mb-4">
+                            <h1 class="font-game text-2xl sm:text-3xl text-gray-800 mb-1">💃 Follow Joko</h1>
+                            <p class="text-gray-600 text-sm sm:text-base">Watch his moves, then repeat them in order</p>
+                        </div>
+                        <div class="bg-gradient-to-r from-teal-500 to-indigo-500 text-white p-3 rounded-2xl text-center mb-4">
+                            <p id="simonStatus" class="font-bold text-lg">Watch Joko!</p>
+                            <p class="text-sm font-semibold opacity-90">🏁 Round <span id="simonRound">1</span> · 🎯 win at <span id="simonWinRounds">-</span> · 🪙 up to <span id="simonCoins">-</span></p>
+                        </div>
+                        <div id="simonPads" class="simon-pads mx-auto mb-5">
+                            <button type="button" class="simon-pad simon-pad--0" data-move="0" aria-label="Left hand" disabled><span>🫲</span><small>Left</small></button>
+                            <button type="button" class="simon-pad simon-pad--1" data-move="1" aria-label="Right hand" disabled><span>🫱</span><small>Right</small></button>
+                            <button type="button" class="simon-pad simon-pad--2" data-move="2" aria-label="Jump" disabled><span>⬆️</span><small>Jump</small></button>
+                            <button type="button" class="simon-pad simon-pad--3" data-move="3" aria-label="Sway" disabled><span>💃</span><small>Sway</small></button>
+                        </div>
+                        <button data-action="simon-finish"
+                            class="hidden w-full bg-gradient-to-r from-amber-400 to-orange-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-3">
+                            <span class="text-xl mr-2">🏁</span>Finish &amp; collect reward
+                        </button>
+                        <button data-action="simon-again"
+                            class="hidden w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-3">
+                            <span class="text-xl mr-2">🔄</span>Play Again
+                        </button>
+                        <button data-action="home"
+                            class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
+                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to games
                         </button>
                     </div>
                 </div>
@@ -1373,7 +1453,7 @@
 
                         <button data-action="home"
                             class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
-                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to games
                         </button>
                     </div>
                 </div>
@@ -1427,11 +1507,15 @@
                             class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover mb-4">
                             <span class="text-xl sm:text-xl mr-2">💡</span>Hint (-<span data-hint-cost>80</span> Coin)
                         </button>
+                        <button data-action="word-again"
+                            class="hidden w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-3">
+                            <span class="text-xl mr-2">🔄</span>Play Again
+                        </button>
 
                         <!-- Back Button - Spacing Diperbaiki -->
                         <button data-action="home"
                             class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 sm:p-3 rounded-2xl font-bold btn-hover">
-                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to menu
+                            <span class="text-xl sm:text-xl mr-2">🔙</span>Back to games
                         </button>
                     </div>
                 </div>
@@ -1524,11 +1608,15 @@
                             class="w-full bg-gradient-to-r from-yellow-500 to-orange-500 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-4">
                             <span class="text-xl mr-2">🔍</span>Open Tile (-<span data-hint-cost>80</span> Coin)
                         </button>
+                        <button data-action="image-again"
+                            class="hidden w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-3">
+                            <span class="text-xl mr-2">🔄</span>Play Again
+                        </button>
 
                         <!-- Back Button -->
                         <button data-action="home"
                             class="w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 rounded-2xl font-bold btn-hover">
-                            <span class="text-xl mr-2">🔙</span>Back to menu
+                            <span class="text-xl mr-2">🔙</span>Back to games
                         </button>
                     </div>
                 </div>

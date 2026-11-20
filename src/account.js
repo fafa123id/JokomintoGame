@@ -1,6 +1,6 @@
-import { api, state, setPet } from "./api.js";
+import { api, state, setPet, isOffline, loadSnapshot, clearSnapshot } from "./api.js";
 import { updateChar, updateContext, showMessage } from "./components.js";
-import { openModal, closeModal, html, ui } from "./modal.js";
+import { openModal, closeModal, html, ui, confirmDialog } from "./modal.js";
 import { notificationButton } from "./notifications.js";
 
 let googleClientId = null;
@@ -10,7 +10,8 @@ let pendingSession = null;
 async function applySession(user) {
   state.user = user;
   const { pet } = await api("/api/pet");
-  setPet(pet);
+  const snapshot = loadSnapshot();
+  setPet(pet ?? (snapshot.user?.id === user.id ? snapshot.pet : null));
   renderAccountBadge();
   updateContext();
   updateChar();
@@ -22,8 +23,19 @@ function finishPending(ok) {
   pendingSession = null;
 }
 
+// Offline first-timers play practice rounds as a temporary player; nothing is saved for them.
+const OFFLINE_PLAYER = { id: 0, name: "Player", isGuest: true, offline: true };
+const OFFLINE_PET = { hunger: 0, hygiene: 100, mood: 100, coin: 0 };
+
 export function requireSession() {
   if (state.user) return Promise.resolve(true);
+  if (isOffline()) {
+    state.user = OFFLINE_PLAYER;
+    state.pet = { ...OFFLINE_PET };
+    updateContext();
+    updateChar();
+    return Promise.resolve(true);
+  }
   return new Promise((resolve) => {
     pendingSession = resolve;
     showGuestView();
@@ -164,8 +176,15 @@ function showAccountView() {
   if (user.isGuest) {
     button("Save Progress (Register)", ui.primary, () => showCredentialsView("register"));
     button("Login to Existing Account", ui.secondary, () => showCredentialsView("login"));
-    button("Reset Guest", ui.danger, () => {
-      if (confirm("Your guest progress will be permanently deleted. Continue?")) logout();
+    button("Reset Guest", ui.danger, async () => {
+      const ok = await confirmDialog({
+        title: "Reset guest?",
+        message: "Your guest progress, coins and skins will be permanently deleted.",
+        confirmText: "Delete",
+        cancelText: "Keep",
+        image: "/asset/char/sad.png",
+      });
+      if (ok) logout();
     });
   } else {
     button("Logout", ui.danger, logout);
@@ -176,6 +195,7 @@ function showAccountView() {
 
 async function logout() {
   await api("/api/auth/logout", {});
+  clearSnapshot();
   if (googleInitialized) window.google?.accounts.id.disableAutoSelect();
   location.reload();
 }
@@ -248,6 +268,7 @@ function buildToolbar() {
 export async function initAccount() {
   buildToolbar();
   window.addEventListener("auth:required", () => {
+    clearSnapshot();
     state.user = null;
     renderAccountBadge();
     requireSession();
@@ -256,5 +277,17 @@ export async function initAccount() {
   loadGoogle();
 
   const res = await api("/api/auth/me", undefined, { silent401: true });
-  if (res.user) await applySession(res.user);
+  if (res.user) return applySession(res.user);
+  const snapshot = loadSnapshot();
+  if (res.offline && snapshot.user) await applySession(snapshot.user);
+}
+
+// Called when the connection comes back: re-sync the real session and stats.
+export async function resyncSession() {
+  const res = await api("/api/auth/me", undefined, { silent401: true });
+  if (res.user) return applySession(res.user);
+  if (state.user?.offline) {
+    state.user = null;
+    renderAccountBadge();
+  }
 }

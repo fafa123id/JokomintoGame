@@ -114,8 +114,8 @@ async function start() {
   }
   session = res;
   updateContext();
-  el("xoxPoints").textContent = res.rewards.maxScore;
-  el("xoxCoins").textContent = res.rewards.maxCoin;
+  el("xoxPoints").textContent = res.practice ? "-" : res.rewards.maxScore;
+  el("xoxCoins").textContent = res.practice ? "-" : res.rewards.maxCoin;
   setStatus("Your turn! ❌");
   say(PET_IMG, "Ayo main! 😼", 1800, { mood: "happy" });
   gameFx(PET_IMG, "ready");
@@ -142,7 +142,7 @@ function finish(res) {
     el(PET_IMG).src = "/asset/char/sad.png";
     gameFx(PET_IMG, "victory", { coins: Math.ceil(coin / 15), cheer: false });
     say(PET_IMG, "Nooo! Kamu menang 😭", 2400, { mood: "sad" });
-    setStatus(`You win! +${score} pts · +${coin} coin`);
+    setStatus(res.practice ? "You win! (practice)" : `You win! +${score} pts · +${coin} coin`);
   } else if (res.status === "lose") {
     el(PET_IMG).src = "/asset/char/happy.png";
     gameFx(PET_IMG, "victory", { coins: 0 });
@@ -152,7 +152,7 @@ function finish(res) {
   } else if (res.status === "draw") {
     gameFx(PET_IMG, "ready");
     say(PET_IMG, "Seri! Tos dulu 🤝", 2200, { mood: "fresh" });
-    setStatus(`Draw! +${score} pts · +${coin} coin`);
+    setStatus(res.practice ? "Draw! (practice)" : `Draw! +${score} pts · +${coin} coin`);
   } else {
     gameFx(PET_IMG, "fail");
     say(PET_IMG, "Waktu habis! ⏰", 2000, { mood: "sad" });

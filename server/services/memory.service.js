@@ -18,9 +18,17 @@ function shuffle(list) {
 }
 
 // The deck stays on the server; the client only learns a face when it is flipped.
-export function initialState() {
-  return { deck: shuffle([...MEMORY.faces, ...MEMORY.faces]), matched: [], open: null, moves: 0 };
+export function initialState(now = Date.now()) {
+  return {
+    deck: shuffle([...MEMORY.faces, ...MEMORY.faces]),
+    matched: [],
+    open: null,
+    moves: 0,
+    previewUntil: now + MEMORY.previewSec * 1000,
+  };
 }
+
+const previewLeftMs = (state) => Math.max(0, (state.previewUntil ?? 0) - Date.now());
 
 function coinContext(userId) {
   return {
@@ -47,8 +55,10 @@ export function performanceOf(moves, elapsedSec) {
 
 export function memoryView(session) {
   const { deck, matched, open, moves } = session.state;
+  const previewMs = previewLeftMs(session.state);
   return {
     cards: deck.length,
+    ...(previewMs > 0 && { preview: deck, previewMs }),
     matched: matched.map((i) => ({ index: i, face: deck[i] })),
     open: open === null ? null : { index: open, face: deck[open] },
     moves,
@@ -57,7 +67,7 @@ export function memoryView(session) {
 }
 
 function settleWin(userId, session, state) {
-  const elapsedSec = (Date.now() - session.started_at) / 1000;
+  const elapsedSec = (Date.now() - (state.previewUntil ?? session.started_at)) / 1000;
   const performance = performanceOf(state.moves, elapsedSec);
   const score = Math.round(baseFromDifficulty(MEMORY.difficulty) * performance);
   const coin = coinReward(coinContext(userId), performance).coin;
@@ -85,6 +95,7 @@ export function flipCard(userId, sessionId, index) {
     const session = GameSession.find(sessionId, userId);
     if (!session || session.type !== "memory" || session.finished) throw HttpError.badRequest("Game session is not active");
     if (Date.now() > session.expires_at) return settleTimeout(userId, session);
+    if (previewLeftMs(session.state) > 0) throw HttpError.badRequest("Memorize the cards first");
 
     const state = { ...session.state, matched: [...session.state.matched] };
     if (index >= state.deck.length) throw HttpError.badRequest("Card doesn't exist");

@@ -15,3 +15,7 @@ All tracks are released under CC0 (public domain) on OpenGameArt.org.
 | xox-2.mp3 | Town Theme | cynicmusic | https://opengameart.org/content/town-theme-rpg |
 | chess-1.mp3 | Crystal Cave (song18) | cynicmusic | https://opengameart.org/content/crystal-cave-song18 |
 | chess-2.ogg | Lofi Hip Hop | omfgdude | https://opengameart.org/content/lofi-hip-hop |
+| memory-1.mp3 | Chillin' Poupi | Komiku (Loyalty Freak Music) | https://opengameart.org/content/poupis-incredible-adventures-full-album |
+| memory-2.mp3 | Happy Adventure Loop | TinyWorlds | https://opengameart.org/content/happy-adventure-loop |
+| simon-1.mp3 | Fetch Dance | Komiku (Loyalty Freak Music) | https://opengameart.org/content/poupis-incredible-adventures-full-album |
+| simon-2.mp3 | Disco Cat | Komiku (Loyalty Freak Music) | https://opengameart.org/content/poupis-incredible-adventures-full-album |

@@ -1,6 +1,6 @@
 import { motionEnabled } from "./motion.js";
 
-const PAGES = ["gameTitle", "optionButton", "menuGame", "menuSabun", "menuMakanan", "tebakKata", "tebakGambar", "xoxGame", "chessGame"];
+const PAGES = ["gameTitle", "optionButton", "menuGame", "menuSabun", "menuMakanan", "tebakKata", "tebakGambar", "xoxGame", "chessGame", "memoryGame", "simonGame"];
 const TILT_TARGETS = ".mainScreen button.btn-hover, .mainScreen .card-shadow.rounded-3xl, .stat-bar";
 const MAX_TILT = 8;
 

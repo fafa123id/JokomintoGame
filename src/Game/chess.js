@@ -1,4 +1,5 @@
 import { sendEvent } from "../stateManager.js";
+import { confirmDialog } from "../modal.js";
 import { api } from "../api.js";
 import { showMessage, updateContext } from "../components.js";
 import { playCondition } from "../condition.js";
@@ -277,7 +278,14 @@ function finish(res) {
 
 async function resign() {
   if (!session || busy) return;
-  if (!confirm("Resign this game?")) return;
+  const ok = await confirmDialog({
+    title: "Menyerah?",
+    message: "Joko bakal menang dan ronde ini selesai tanpa hadiah. Yakin mau resign?",
+    confirmText: "🏳️ Resign",
+    cancelText: "Lanjut main",
+    image: "/asset/char/happy.png",
+  });
+  if (!ok || !session) return;
   const current = session;
   session = null;
   await api("/api/game/end", { sessionId: current.sessionId });

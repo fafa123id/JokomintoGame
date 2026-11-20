@@ -47,6 +47,8 @@ function updateUIBasedOnState(state) {
   document.getElementById("tebakGambar").style.display = "none";
   document.getElementById("xoxGame").style.display = "none";
   document.getElementById("chessGame").style.display = "none";
+  document.getElementById("memoryGame").style.display = "none";
+  document.getElementById("simonGame").style.display = "none";
   document.getElementById("menuSabun").style.display = "none";
   document.getElementById("menuMakanan").style.display = "none";
   document.getElementById("MainCharDiv").style.display = "none";

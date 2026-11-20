@@ -82,7 +82,7 @@ export const machine = createMachine({
     playing: {
       on: {
         WIN: {
-          target: "idle",
+          target: "selectGame",
           actions: [
             {
               type: "increaseMood",
@@ -99,7 +99,7 @@ export const machine = createMachine({
           ],
         },
         LOSE: {
-          target: "idle",
+          target: "selectGame",
         },
         BACK: {
           actions: [
@@ -107,7 +107,7 @@ export const machine = createMachine({
               type: "resetTimerGame",
             },
           ],
-          target: "idle",
+          target: "selectGame",
         },
       },
       entry: {
@@ -152,6 +152,8 @@ export const machine = createMachine({
         returnToMenuFromImage();
         window.leaveTicTacToe?.();
         window.leaveChess?.();
+        window.leaveMemory?.();
+        window.leaveSimon?.();
     },
     increaseHunger: () => updateContext(),
     increaseMood: () => updateContext(),

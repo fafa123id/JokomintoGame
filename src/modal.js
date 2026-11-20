@@ -38,6 +38,39 @@ export function closeModal({ silent = false } = {}) {
   if (!silent) cb?.();
 }
 
+const escapeText = (text) =>
+  String(text).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+// Styled replacement for window.confirm(); resolves true only when the action is confirmed.
+export function confirmDialog({ title, message, confirmText = "Yes", cancelText = "Cancel", image, icon = "❓", tone = "danger" } = {}) {
+  return new Promise((resolve) => {
+    let answered = false;
+    const answer = (value) => {
+      if (answered) return;
+      answered = true;
+      closeModal({ silent: true });
+      resolve(value);
+    };
+    const art = image
+      ? `<img src="${escapeText(image)}" alt="" class="confirm-art-img" draggable="false">`
+      : `<span class="confirm-art-icon">${escapeText(icon)}</span>`;
+    const view = html(`
+      <div class="confirm-dialog confirm-dialog--${tone}" role="alertdialog" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+        <div class="confirm-art">${art}</div>
+        <h2 id="confirmTitle" class="font-game text-2xl text-center text-gray-800 mb-1">${escapeText(title)}</h2>
+        <p id="confirmMessage" class="text-center text-gray-500 text-sm mb-6">${escapeText(message)}</p>
+        <div class="grid grid-cols-2 gap-3">
+          <button type="button" data-confirm-cancel class="confirm-btn confirm-btn--cancel">${escapeText(cancelText)}</button>
+          <button type="button" data-confirm-ok class="confirm-btn confirm-btn--ok">${escapeText(confirmText)}</button>
+        </div>
+      </div>`);
+    view.querySelector("[data-confirm-cancel]").addEventListener("click", () => answer(false));
+    view.querySelector("[data-confirm-ok]").addEventListener("click", () => answer(true));
+    openModal(view, { onClose: () => answer(false) });
+    view.querySelector("[data-confirm-cancel]").focus();
+  });
+}
+
 export function isOpen() {
   return !!overlay && !overlay.classList.contains("hidden");
 }

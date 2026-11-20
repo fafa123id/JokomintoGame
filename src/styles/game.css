@@ -874,3 +874,219 @@
 .pet-sprite.is-3d.pet-petted { animation: none !important; }
 #MainCharDiv .pet-sprite { cursor: grab; }
 .motion-reduced .pet-petted { animation: none !important; }
+
+/* Memory cards */
+.memory-board {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(6px, 2vw, 10px);
+  width: min(100%, 360px);
+  perspective: 800px;
+}
+.memory-card {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.memory-card-inner {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  transition: transform 0.45s cubic-bezier(0.3, 1.3, 0.5, 1);
+}
+.memory-card.is-open .memory-card-inner,
+.memory-card.is-matched .memory-card-inner {
+  transform: rotateY(180deg);
+}
+.memory-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 4px 10px rgba(30, 8, 70, 0.18);
+}
+.memory-face--back {
+  background: linear-gradient(135deg, #f59e0b, #ec4899);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: clamp(1.1rem, 6vw, 1.8rem);
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.55), 0 4px 10px rgba(30, 8, 70, 0.18);
+}
+.memory-face--front {
+  background: #fff;
+  transform: rotateY(180deg);
+  box-shadow: inset 0 0 0 3px #f9a8d4, 0 4px 10px rgba(30, 8, 70, 0.18);
+}
+.memory-emoji {
+  font-size: clamp(1.7rem, 10vw, 2.6rem);
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+.memory-card:not(:disabled):hover .memory-face--back { filter: brightness(1.08); }
+.memory-card:disabled { cursor: default; }
+.memory-card.is-matched .memory-face--front {
+  box-shadow: inset 0 0 0 3px #22c55e, 0 0 14px rgba(34, 197, 94, 0.45);
+  animation: memory-match 0.5s ease;
+}
+/* The front face is rotated 180deg, so its animations must keep that rotation or it turns invisible. */
+.memory-card.is-miss .memory-face--front {
+  animation: memory-miss 0.45s ease;
+  box-shadow: inset 0 0 0 3px #f87171, 0 4px 10px rgba(30, 8, 70, 0.18);
+}
+@keyframes memory-miss {
+  0%, 100% { transform: rotateY(180deg) translateX(0); }
+  20%, 60% { transform: rotateY(180deg) translateX(6px); }
+  40%, 80% { transform: rotateY(180deg) translateX(-6px); }
+}
+@keyframes memory-match {
+  40% { transform: rotateY(180deg) scale(1.12); }
+}
+
+/* Follow Joko pads */
+.simon-pads {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: min(100%, 320px);
+}
+.simon-pad {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  aspect-ratio: 1.5;
+  border: 0;
+  border-radius: 20px;
+  color: #fff;
+  font-weight: 800;
+  box-shadow: inset 0 -6px 0 rgba(0, 0, 0, 0.18), 0 6px 14px rgba(30, 8, 70, 0.2);
+  opacity: 0.82;
+  transition: transform 0.12s ease, opacity 0.12s ease, filter 0.12s ease, box-shadow 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.simon-pad span { font-size: clamp(1.6rem, 9vw, 2.2rem); line-height: 1; }
+.simon-pad small { font-size: 0.8rem; opacity: 0.9; }
+.simon-pad--0 { background: #ef4444; }
+.simon-pad--1 { background: #3b82f6; }
+.simon-pad--2 { background: #f59e0b; }
+.simon-pad--3 { background: #22c55e; }
+.simon-pad:disabled { cursor: default; }
+.simon-pad.is-lit {
+  opacity: 1;
+  filter: brightness(1.25) saturate(1.2);
+  transform: scale(1.06);
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.15), 0 0 22px rgba(255, 255, 255, 0.85), 0 0 34px currentColor;
+}
+.simon-pads.is-watching .simon-pad { opacity: 0.55; }
+.simon-pads.is-watching .simon-pad.is-lit { opacity: 1; }
+.simon-pads.is-wrong { animation: input-shake 0.45s ease; }
+
+/* 2D fallback for Joko's dance moves */
+.pet-sprite.pet-dance0 { animation: pet-dance-side 0.5s ease; --dance-dir: -1; }
+.pet-sprite.pet-dance1 { animation: pet-dance-side 0.5s ease; --dance-dir: 1; }
+.pet-sprite.pet-dance2 { animation: pet-dance-jump 0.5s ease; }
+.pet-sprite.pet-dance3 { animation: pet-dance-sway 0.5s ease; }
+.pet-sprite.is-3d.pet-dance0,
+.pet-sprite.is-3d.pet-dance1,
+.pet-sprite.is-3d.pet-dance2,
+.pet-sprite.is-3d.pet-dance3 { animation: none; }
+@keyframes pet-dance-side {
+  50% { transform: translateX(calc(var(--dance-dir) * 14px)) rotate(calc(var(--dance-dir) * 9deg)); }
+}
+@keyframes pet-dance-jump {
+  40% { transform: translateY(-26px) scale(1.04, 0.96); }
+  70% { transform: translateY(0) scale(1.06, 0.92); }
+}
+@keyframes pet-dance-sway {
+  20% { transform: rotate(-8deg); }
+  40% { transform: rotate(8deg); }
+  60% { transform: rotate(-6deg); }
+  80% { transform: rotate(5deg); }
+}
+.motion-reduced .memory-card-inner { transition-duration: 0.01s; }
+.motion-reduced .pet-sprite.pet-dance0,
+.motion-reduced .pet-sprite.pet-dance1,
+.motion-reduced .pet-sprite.pet-dance2,
+.motion-reduced .pet-sprite.pet-dance3 { animation: none; }
+
+/* Confirmation dialog */
+.confirm-dialog { text-align: center; animation: confirm-pop 0.35s cubic-bezier(0.3, 1.4, 0.5, 1) both; }
+.confirm-art {
+  position: relative;
+  width: 112px;
+  height: 112px;
+  margin: -0.25rem auto 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 25%, #fde68a, #fb7185 55%, #a855f7);
+  box-shadow: 0 10px 26px rgba(168, 85, 247, 0.35), inset 0 -6px 0 rgba(0, 0, 0, 0.08);
+}
+.confirm-art::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px dashed rgba(168, 85, 247, 0.35);
+  animation: confirm-spin 12s linear infinite;
+}
+.confirm-art-img { width: 82%; height: 82%; object-fit: contain; animation: confirm-bob 2.4s ease-in-out infinite; }
+.confirm-art-icon { font-size: 3rem; animation: confirm-bob 2.4s ease-in-out infinite; }
+.confirm-btn {
+  padding: 0.85rem 0.5rem;
+  border-radius: 1rem;
+  font-weight: 800;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+}
+.confirm-btn:hover { transform: translateY(-2px); }
+.confirm-btn:active { transform: translateY(1px) scale(0.98); }
+.confirm-btn--cancel { background: #f3f4f6; color: #374151; box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.08); }
+.confirm-btn--ok { color: #fff; background: linear-gradient(135deg, #fb7185, #e11d48); box-shadow: 0 6px 16px rgba(225, 29, 72, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.15); }
+.confirm-dialog--primary .confirm-btn--ok { background: linear-gradient(135deg, #8b5cf6, #6d28d9); box-shadow: 0 6px 16px rgba(109, 40, 217, 0.35), inset 0 -3px 0 rgba(0, 0, 0, 0.15); }
+@keyframes confirm-pop { from { opacity: 0; transform: translateY(14px) scale(0.92); } }
+@keyframes confirm-bob { 50% { transform: translateY(-5px) rotate(-3deg); } }
+@keyframes confirm-spin { to { transform: rotate(360deg); } }
+.motion-reduced .confirm-dialog,
+.motion-reduced .confirm-art::after,
+.motion-reduced .confirm-art-img,
+.motion-reduced .confirm-art-icon { animation: none; }
+
+/* Offline indicator */
+.net-pill {
+  position: fixed;
+  top: max(10px, env(safe-area-inset-top));
+  left: 50%;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: calc(100vw - 32px);
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  background: rgba(30, 27, 75, 0.88);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(6px);
+  transform: translate(-50%, -160%);
+  transition: transform 0.35s cubic-bezier(0.3, 1.3, 0.5, 1);
+  pointer-events: none;
+}
+.net-pill.is-visible { transform: translate(-50%, 0); }
+.net-pill .net-dot { width: 8px; height: 8px; border-radius: 50%; background: #f87171; box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.3); }
+button[data-online-only].is-offline { opacity: 0.5; filter: grayscale(0.6); }
