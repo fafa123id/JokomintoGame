@@ -13,12 +13,18 @@ export const paths = {
   migrations: path.join(serverDir, "database", "migrations"),
 };
 
+// A hop count ("2") or Express subnet keywords ("loopback, linklocal, uniquelocal").
+function parseTrustProxy(value) {
+  if (!value) return false;
+  return /^\d+$/.test(value.trim()) ? Number(value) : value;
+}
+
 const config = {
   env,
   isProd: env === "production",
   isTest: env === "test",
   port: Number(process.env.PORT) || 3000,
-  trustProxy: process.env.TRUST_PROXY ? Number(process.env.TRUST_PROXY) || 1 : false,
+  trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
   dbFile: process.env.DB_FILE || path.join(paths.storage, "database", "game.db"),
 
   auth: {

@@ -1,6 +1,6 @@
 // Service worker: offline fallback + web push. Code is network-first so deploys are never stale.
 // Responses are cloned before being returned; cloning later fails once the page has read the body.
-const VERSION = "v5";
+const VERSION = "v6";
 const SHELL_CACHE = `jokominto-shell-${VERSION}`;
 const MEDIA_CACHE = `jokominto-media-${VERSION}`;
 const SHELL = ["/", "/index.js", "/src/styles/game.css", "/asset/icon.png", "/asset/char/idle.png"];
@@ -36,27 +36,6 @@ function staleWhileRevalidate(event) {
   event.respondWith(caches.match(event.request).then((hit) => hit || refresh));
   event.waitUntil(refresh.catch(() => {}));
 }
-
-// The page sends the same-origin files it loaded so the whole app is available offline.
-self.addEventListener("message", (event) => {
-  if (event.data?.type !== "warm-cache" || !Array.isArray(event.data.urls)) return;
-  const urls = event.data.urls
-    .filter((u) => typeof u === "string" && new URL(u).origin === self.location.origin)
-    .filter((u) => !new URL(u).pathname.startsWith("/api/") && !isAudio(new URL(u)))
-    .slice(0, 300);
-  event.waitUntil(
-    Promise.all([caches.open(SHELL_CACHE), caches.open(MEDIA_CACHE)]).then(([shell, media]) =>
-      Promise.all(
-        urls.map(async (u) => {
-          const target = isMedia(new URL(u)) ? media : shell;
-          if (await target.match(u)) return;
-          const res = await fetch(u).catch(() => null);
-          if (res?.ok) await target.put(u, res);
-        })
-      )
-    )
-  );
-});
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;

@@ -54,5 +54,7 @@ const limiter = (windowMs, limit, message = "Too many requests, try again later"
   });
 
 export const apiLimiter = limiter(60_000, 120);
+// Card flips and dance moves send a request per tap, so gameplay gets its own, roomier budget.
+export const gameLimiter = limiter(60_000, 600, "You're playing too fast, slow down a little");
 export const authLimiter = limiter(15 * 60_000, 20, "Too many attempts, try again later");
 export const guestLimiter = limiter(60 * 60_000, 10, "Too many guest accounts, try again later");

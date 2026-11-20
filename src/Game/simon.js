@@ -90,7 +90,7 @@ async function start() {
   updateContext();
   el("simonRound").textContent = res.round;
   el("simonWinRounds").textContent = res.rewards.winRounds;
-  el("simonCoins").textContent = res.practice ? "-" : res.rewards.maxCoin;
+  el("simonCoins").textContent = res.rewards.maxCoin;
   gameFx(PET, "ready");
   say(PET, "Ikuti gerakanku ya! 💃", 1600, { mood: "happy" });
   await sleep(900);
@@ -117,7 +117,7 @@ function press(move) {
 
 async function handle(res) {
   if (finished || !session) return;
-  if (res.error) return;
+  if (res.error) return stopOnError(res);
   if (res.status === "ok") return;
   if (res.status === "round") {
     sequence = res.sequence;
@@ -131,6 +131,18 @@ async function handle(res) {
     return showSequence();
   }
   finish(res);
+}
+
+// The server and the pads are out of step after a failed request, so the run stops here.
+function stopOnError(res) {
+  finished = true;
+  session = null;
+  runId++;
+  setInput(false);
+  finishButton().classList.add("hidden");
+  document.querySelector('[data-action="simon-again"]').classList.remove("hidden");
+  setStatus("Connection problem, tap Play Again");
+  if (!res.offline) showMessage(res.error, "error", 2500, true);
 }
 
 // Ends a winning run on the player's terms (rounds are otherwise unlimited).
@@ -174,7 +186,7 @@ function finish(res) {
     el(PET).src = "/asset/char/happy.png";
     gameFx(PET, "victory", { coins: Math.ceil(coin / 15) });
     say(PET, res.status === "finished" ? `Juara dansa! ${rounds} ronde! 🏆` : `Hebat! ${rounds} ronde! 🎉`, 2600, { mood: "happy" });
-    setStatus(res.practice ? `You win! ${rounds} rounds (practice)` : `You win! ${rounds} rounds · +${score} pts · +${coin} coin`);
+    setStatus(`You win! ${rounds} rounds · +${score} pts · +${coin} coin`);
   } else {
     failTone();
     el(PET).src = "/asset/char/wrong.png";

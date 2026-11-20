@@ -2,68 +2,96 @@ import { isOffline, setOffline, refreshPet, state } from "./api.js";
 import { showMessage, updateContext } from "./components.js";
 import { resyncSession } from "./account.js";
 
-const PROBE_MS = 15000;
-let pill = null;
-let probeTimer = null;
+// The game is online-only: losing the connection blocks the screen until it comes back.
+const RETRY_SEC = 5;
 
-function render(offline) {
-  pill.classList.toggle("is-visible", offline);
-  pill.setAttribute("aria-hidden", String(!offline));
-  for (const button of document.querySelectorAll("button[data-online-only]")) {
-    button.classList.toggle("is-offline", offline);
-    button.title = offline ? "Needs internet" : "";
+let overlay = null;
+let retryTimer = null;
+let countdown = RETRY_SEC;
+let checking = false;
+
+const el = (selector) => overlay.querySelector(selector);
+
+async function reachable() {
+  try {
+    const res = await fetch("/healthz", { cache: "no-store" });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
-// navigator.onLine can't see a dead Wi-Fi, so while offline the health endpoint is polled until it answers.
-function probe() {
-  clearInterval(probeTimer);
-  probeTimer = setInterval(async () => {
-    try {
-      const res = await fetch("/healthz", { cache: "no-store" });
-      if (res.ok) setOffline(false);
-    } catch {}
-  }, PROBE_MS);
+async function reconnect() {
+  if (checking) return;
+  checking = true;
+  overlay.classList.add("is-checking");
+  el("[data-net-retry]").disabled = true;
+  el("[data-net-label]").textContent = "Reconnecting...";
+  const ok = await reachable();
+  checking = false;
+  overlay.classList.remove("is-checking");
+  el("[data-net-retry]").disabled = false;
+  el("[data-net-label]").textContent = "Reconnect";
+  if (ok) return setOffline(false);
+  el(".net-card").classList.remove("is-shaking");
+  void el(".net-card").offsetWidth;
+  el(".net-card").classList.add("is-shaking");
+  countdown = RETRY_SEC;
 }
 
-async function onReconnect() {
-  clearInterval(probeTimer);
+function tick() {
+  if (checking) return;
+  countdown -= 1;
+  if (countdown <= 0) return reconnect();
+  el("[data-net-countdown]").textContent = `Trying again in ${countdown}s`;
+}
+
+function show() {
+  countdown = RETRY_SEC;
+  el("[data-net-countdown]").textContent = `Trying again in ${countdown}s`;
+  overlay.hidden = false;
+  void overlay.offsetWidth;
+  overlay.classList.add("is-visible");
+  clearInterval(retryTimer);
+  retryTimer = setInterval(tick, 1000);
+  el("[data-net-retry]").focus();
+}
+
+async function hide() {
+  clearInterval(retryTimer);
+  overlay.classList.remove("is-visible");
+  setTimeout(() => (overlay.hidden = true), 300);
   await resyncSession();
   if (state.user) await refreshPet();
   updateContext();
-  showMessage("Kembali online! Data tersinkron ✅", "success", 2200, true);
-}
-
-// Hands the files this page already loaded to the service worker, so the next launch works offline.
-async function warmCache() {
-  if (!("serviceWorker" in navigator)) return;
-  const reg = await navigator.serviceWorker.ready;
-  const urls = performance
-    .getEntriesByType("resource")
-    .map((entry) => entry.name)
-    .filter((url) => {
-      const { origin, pathname } = new URL(url);
-      return origin === location.origin && !pathname.startsWith("/api/") && !/\.(mp3|ogg|m4a)$/i.test(pathname);
-    });
-  reg.active?.postMessage({ type: "warm-cache", urls: [...new Set(urls)] });
+  showMessage("Back online! ✅", "success", 1800, true);
 }
 
 export function initOffline() {
-  pill = document.createElement("div");
-  pill.className = "net-pill";
-  pill.setAttribute("role", "status");
-  pill.innerHTML = `<span class="net-dot"></span><span>Offline · practice mode, no coins or score</span>`;
-  document.body.appendChild(pill);
+  overlay = document.createElement("div");
+  overlay.className = "net-overlay";
+  overlay.hidden = true;
+  overlay.setAttribute("role", "alertdialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "netTitle");
+  overlay.innerHTML = `
+    <div class="net-card">
+      <div class="net-art">
+        <img src="/asset/char/sad.png" alt="" draggable="false">
+        <span class="net-badge" aria-hidden="true">📶</span>
+      </div>
+      <h2 id="netTitle" class="font-game text-2xl text-gray-800 mb-1">Joko needs internet</h2>
+      <p class="text-gray-500 text-sm mb-5">JokomintoGame requires an internet connection to play and keep your progress safe. Check your Wi-Fi or mobile data.</p>
+      <button type="button" class="net-retry" data-net-retry>
+        <span class="net-spinner" aria-hidden="true"></span><span data-net-label>Reconnect</span>
+      </button>
+      <p class="net-countdown" data-net-countdown aria-live="polite"></p>
+    </div>`;
+  document.body.appendChild(overlay);
+  el("[data-net-retry]").addEventListener("click", reconnect);
 
-  window.addEventListener("online", () => setOffline(false));
+  window.addEventListener("online", () => reconnect());
   window.addEventListener("offline", () => setOffline(true));
-  window.addEventListener("net:change", (e) => {
-    render(e.detail.offline);
-    if (e.detail.offline) probe();
-    else onReconnect();
-  });
-  render(isOffline());
-  if (isOffline()) probe();
-
-  window.addEventListener("load", () => setTimeout(() => warmCache().catch(() => {}), 3000));
+  window.addEventListener("net:change", (e) => (e.detail.offline ? show() : hide()));
+  if (isOffline()) show();
 }

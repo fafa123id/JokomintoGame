@@ -165,7 +165,7 @@ const tebakKataSubmit = async () => {
     answerFeedback(form(), "✓ Benar!", "good");
     focusPet(PET);
     gameFx(PET, "victory", { coins: Math.ceil(res.reward.coin / 15) });
-    say(PET, res.practice ? "Yeay, benar! 🎉" : `Yeay, benar! +${res.reward.score} pts 🎉`, 2600, { mood: "happy" });
+    say(PET, `Yeay, benar! +${res.reward.score} pts 🎉`, 2600, { mood: "happy" });
     floatStats(PET, [
       res.reward.score && { text: `+${res.reward.score} pts`, tone: "purple" },
       res.reward.coin && { text: `+${res.reward.coin} 🪙`, tone: "gold" },

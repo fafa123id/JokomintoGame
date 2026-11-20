@@ -9,7 +9,8 @@ services:
       PORT: "3005"
       DB_FILE: /data/game.db
       IMAGE_CACHE_DIR: /data/image-cache
-      TRUST_PROXY: "1"
+      # nginx-proxy -> nginx -> app: trust every private hop so the real client IP is used.
+      TRUST_PROXY: "loopback, linklocal, uniquelocal"
     volumes:
       - app-data:/data
     ports:

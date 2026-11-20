@@ -118,7 +118,7 @@ async function start() {
   }
   session = res;
   updateContext();
-  el("memoryCoins").textContent = res.practice ? "-" : res.rewards.maxCoin;
+  el("memoryCoins").textContent = res.rewards.maxCoin;
   const previewMs = res.preview ? res.previewMs : 0;
   el("memoryTime").textContent = Math.max(0, res.timeLeft - Math.ceil(previewMs / 1000));
   if (res.preview) await preview(res.preview, previewMs, id);
@@ -156,6 +156,7 @@ async function flip(index) {
   const res = await api("/api/game/memory/flip", { sessionId: session.sessionId, index });
   if (res.error) {
     busy = false;
+    if (!res.offline) showMessage(res.error, "error", 2000, true);
     return;
   }
   if (res.status === "timeout") {
@@ -213,7 +214,7 @@ function win(res) {
   el(PET).src = "/asset/char/happy.png";
   gameFx(PET, "victory", { coins: Math.ceil(coin / 15) });
   say(PET, `Semua ketemu dalam ${res.moves} langkah! 🎉`, 2600, { mood: "happy" });
-  setStatus(res.practice ? `You win in ${res.moves} moves! (practice)` : `You win! +${score} pts · +${coin} coin`);
+  setStatus(`You win! +${score} pts · +${coin} coin`);
   const stats = [
     score && { text: `+${score} pts`, tone: "purple" },
     coin && { text: `+${coin} 🪙`, tone: "gold" },
