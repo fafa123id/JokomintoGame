@@ -375,30 +375,6 @@
             transition: all 0.5s ease-in-out;
         }
 
-        .sleep-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            backdrop-filter: blur(5px);
-        }
-
-        .sleep-content {
-            text-align: center;
-            color: white;
-            padding: 2rem;
-            border-radius: 1rem;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
         /* Enhanced Debug Terminal Styles */
         .debug-terminal {
             position: flex;
@@ -916,22 +892,6 @@
                 overflow-x: hidden;
             }
         </style>
-        <div id="sleepOverlay" class="sleep-overlay hidden">
-            <div class="sleep-content">
-                <div class="flex justify-center items-center w-full animate-pulse">
-                    <div class="w-48 h-48 flex items-center justify-center relative">
-                        <img id="charSleep" src="/asset/char/sleep.png" alt="character"
-                            class="max-w-full max-h-full object-contain">
-                    </div>
-                </div>
-                <h2 class="text-2xl font-bold mb-2">Jokominto is Sleeping</h2>
-                <p class="text-lg mb-6 opacity-80">Sweet dreams...</p>
-                <button data-action="wake-up"
-                    class="bg-gradient-to-r from-yellow-400 to-orange-500 text-white px-6 py-3 rounded-xl font-bold text-lg btn-hover">
-                    ☀ Wake Up
-                </button>
-            </div>
-        </div>
         <div class="min-h-screen flex flex-col">
             <!-- Status Bar - Diperbesar untuk Mobile -->
             <div id="statusBar" class="stat-bar p-3 sm:p-4 mx-3 sm:mx-4 mt-2 sm:mt-3 rounded-2xl">
@@ -999,14 +959,6 @@
                 </div>
             </div>
             <!-- Message Container - Diperbaiki untuk Mobile -->
-            <div id="message-container" class="flex justify-center items-center px-4 py-3 sm:p-4 hidden mt-2">
-                <div
-                    class="bg-white/95 backdrop-blur-sm px-5 py-3 sm:px-6 sm:py-3 rounded-2xl card-shadow max-w-sm sm:max-w-md mx-auto">
-                    <h2 id="message"
-                        class="text-gray-800 font-semibold text-sm sm:text-base text-center leading-relaxed">
-                    </h2>
-                </div>
-            </div>
             <!-- Main Content -->
             <div class="mainScreen justify-center items-center flex-1 flex flex-col px-4 py-3 sm:p-6">
                 <div id="gameTitle" class="text-center mb-6 sm:mb-8">
@@ -1075,6 +1027,11 @@
                 </div>
                 <div id="optionButton"
                     class="flex flex-col space-y-4 sm:space-y-4 w-full max-w-sm sm:max-w-md lg:max-w-lg">
+                    <button type="button" data-action="resume-match"
+                        class="resume-match hidden text-white p-4 rounded-2xl font-bold text-lg btn-hover">
+                        <span class="text-2xl mr-2">⚔️</span>Resume match
+                        <small data-resume-label class="block text-sm font-semibold opacity-90"></small>
+                    </button>
                     <button
                         class="bg-gradient-to-r from-green-400 to-green-600 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
                         data-action="game-menu">
@@ -1097,6 +1054,11 @@
                     <div class="text-center mb-6 sm:mb-6">
                         <h1 class="font-game text-3xl sm:text-3xl text-white mb-2">🎮 Choose Game</h1>
                     </div>
+                    <button type="button" data-action="resume-match"
+                        class="resume-match hidden text-white p-4 rounded-2xl font-bold text-lg btn-hover">
+                        <span class="text-2xl mr-2">⚔️</span>Resume match
+                        <small data-resume-label class="block text-sm font-semibold opacity-90"></small>
+                    </button>
                     <button
                         class="bg-gradient-to-r from-purple-500 to-pink-500 text-white p-4 sm:p-4 rounded-2xl font-bold text-lg sm:text-lg btn-hover card-shadow"
                         data-action="tebak-kata">
@@ -1390,6 +1352,41 @@
                     </div>
                 </div>
 
+                <div id="versusGame"
+                    class="flex flex-col space-y-4 w-full max-w-md sm:max-w-lg lg:max-w-xl" style="display: none">
+                    <div class="vs-arena mt-8">
+                        <div class="vs-player" data-side="me">
+                            <div class="vs-sprite"><img id="charVsMe" src="/asset/char/idle.png" alt="Your Joko" class="max-w-full max-h-full object-contain"></div>
+                            <div class="vs-name"><strong data-name>You</strong><span data-badge></span><small data-uid></small></div>
+                        </div>
+                        <div class="vs-versus" aria-hidden="true">VS</div>
+                        <div class="vs-player" data-side="foe">
+                            <div class="vs-sprite"><img id="charVsFoe" src="/asset/char/idle.png" alt="Opponent's Joko" class="max-w-full max-h-full object-contain"></div>
+                            <div class="vs-name"><strong data-name></strong><span data-badge></span><small data-uid></small></div>
+                        </div>
+                    </div>
+
+                    <div class="bg-white/95 backdrop-blur-sm p-4 sm:p-6 rounded-3xl card-shadow">
+                        <div class="text-center mb-3">
+                            <h1 id="versusTitle" class="font-game text-2xl sm:text-3xl text-gray-800 mb-1">Online match</h1>
+                        </div>
+                        <div class="bg-gradient-to-r from-indigo-500 to-fuchsia-500 text-white p-3 rounded-2xl text-center mb-4">
+                            <p id="versusStatus" class="font-bold text-lg">Get ready!</p>
+                            <p class="text-sm font-semibold opacity-90">⏱️ <span id="versusClock">5:00</span> to move</p>
+                            <div class="time-bar"><div class="time-bar-fill"></div></div>
+                        </div>
+                        <div id="versusBoard" class="mx-auto mb-5"></div>
+                        <button data-action="versus-resign"
+                            class="w-full bg-gradient-to-r from-rose-400 to-rose-500 text-white p-3 rounded-2xl font-bold btn-hover mb-3">
+                            <span class="text-xl mr-2">🏳️</span>Resign
+                        </button>
+                        <button data-action="versus-back"
+                            class="hidden w-full bg-gradient-to-r from-gray-500 to-gray-600 text-white p-3 rounded-2xl font-bold btn-hover">
+                            <span class="text-xl mr-2">🔙</span>Back to games
+                        </button>
+                    </div>
+                </div>
+
                 <div id="xoxGame"
                     class="flex flex-col space-y-5 sm:space-y-6 w-full max-w-md sm:max-w-lg lg:max-w-xl" style="display: none">
                     <div class="flex justify-center items-center w-full mt-10">
@@ -1427,6 +1424,10 @@
                         <button data-action="xox-again"
                             class="hidden w-full bg-gradient-to-r from-green-500 to-green-600 text-white p-4 rounded-2xl font-bold text-lg btn-hover mb-4">
                             <span class="text-xl mr-2">🔄</span>Play Again
+                        </button>
+                        <button data-action="xox-resign"
+                            class="hidden w-full bg-gradient-to-r from-rose-400 to-rose-500 text-white p-3 rounded-2xl font-bold btn-hover mb-3">
+                            <span class="text-xl mr-2">🏳️</span>Resign
                         </button>
 
                         <button data-action="home"

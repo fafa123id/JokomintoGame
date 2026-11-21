@@ -2,6 +2,7 @@ import { sendEvent } from "../stateManager.js";
 import { api } from "../api.js";
 import { showMessage, updateContext } from "../components.js";
 import { markSound, resultSound } from "./xoxSound.js";
+import { confirmDialog } from "../modal.js";
 import { playCondition } from "../condition.js";
 import { react, say, hush, stopReaction, gameFx, floatStats } from "../pet.js";
 import { focusPet } from "./gameUi.js";
@@ -94,6 +95,7 @@ function resetBoard() {
   board().classList.remove("is-shaking");
   el(PET_IMG).src = "/asset/char/idle.png";
   document.querySelector('[data-action="xox-again"]').classList.add("hidden");
+  resignButton().classList.remove("hidden");
   stopReaction(PET_IMG);
   hush(PET_IMG);
 }
@@ -122,10 +124,30 @@ async function start() {
   setBoardEnabled(true);
 }
 
+const resignButton = () => document.querySelector('[data-action="xox-resign"]');
+
+async function resign() {
+  if (!session || busy) return;
+  const ok = await confirmDialog({
+    title: "Menyerah?",
+    message: "Joko menang dan ronde ini selesai tanpa hadiah. Yakin mau resign?",
+    confirmText: "🏳️ Resign",
+    cancelText: "Lanjut main",
+    image: "/asset/char/happy.png",
+  });
+  if (!ok || !session) return;
+  const current = session;
+  session = null;
+  setBoardEnabled(false);
+  await api("/api/game/end", { sessionId: current.sessionId });
+  finish({ status: "resign" });
+}
+
 function finish(res) {
   session = null;
   if (res.winLine) drawWinLine(res.winLine);
   document.querySelector('[data-action="xox-again"]').classList.remove("hidden");
+  resignButton().classList.add("hidden");
   updateContext();
 
   const { coin = 0, score = 0, mood = 0 } = res.reward ?? {};
@@ -149,6 +171,11 @@ function finish(res) {
     say(PET_IMG, "Hehe, aku menang! 😎", 2400, { mood: "happy" });
     board().classList.add("is-shaking");
     setStatus("Joko wins! Try again?");
+  } else if (res.status === "resign") {
+    el(PET_IMG).src = "/asset/char/happy.png";
+    gameFx(PET_IMG, "victory", { coins: 0 });
+    say(PET_IMG, "Yah, nyerah? Aku menang deh 😏", 2400, { mood: "happy" });
+    setStatus("You resigned");
   } else if (res.status === "draw") {
     gameFx(PET_IMG, "ready");
     say(PET_IMG, "Seri! Tos dulu 🤝", 2200, { mood: "fresh" });
@@ -205,9 +232,11 @@ function leave() {
   busy = false;
 }
 
+export { start as startTicTacToe };
+
 export function initTicTacToe() {
-  document.querySelector('[data-action="xox"]')?.addEventListener("click", start);
   document.querySelector('[data-action="xox-again"]')?.addEventListener("click", start);
+  resignButton()?.addEventListener("click", resign);
   for (const cell of cells()) {
     cell.addEventListener("click", () => onCellClick(Number(cell.dataset.cell)));
   }

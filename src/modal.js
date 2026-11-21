@@ -89,5 +89,4 @@ export const ui = {
   link: "text-blue-600 font-semibold hover:underline",
   title: "font-game text-2xl text-center text-gray-800 mb-1",
   subtitle: "text-center text-gray-500 text-sm mb-5",
-  error: "text-red-600 text-sm min-h-[1.25rem]",
 };

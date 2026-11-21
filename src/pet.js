@@ -1,5 +1,6 @@
 import { state } from "./api.js";
-const SPRITE_IDS = ["charMain", "charHome", "charTebakKata", "charTebakGambar", "charXox", "charChess", "charMemory", "charSimon"];
+import { getSetting } from "./settings.js";
+const SPRITE_IDS = ["charMain", "charHome", "charTebakKata", "charTebakGambar", "charXox", "charChess", "charMemory", "charSimon", "charVsMe", "charVsFoe"];
 const REACTION_CLASSES = [
   "pet-squish", "pet-dizzy", "pet-chomp", "pet-wash", "pet-jump", "pet-shake", "pet-think", "pet-scratch", "pet-sigh",
   "pet-dance0", "pet-dance1", "pet-dance2", "pet-dance3",
@@ -316,6 +317,7 @@ export function playPetScene(name, data, onEnd) {
   };
   const timer = setTimeout(() => finish(false), total);
   showSkip(() => finish(true));
+  if (getSetting("skipCareScenes")) setTimeout(() => finish(true), 0);
   return ms;
 }
 
@@ -380,7 +382,42 @@ export function petPlayIntro(onDone) {
   });
 }
 
+const SLEEP_LINES = ["Zzz... 😴", "Hmm... zzz 💤", "Nyam... zzz 🍕", "Zzz... mimpi indah~ 🌙"];
+const WAKE_LINES = ["Hoaam~ aku bangun! 😊", "Eh? Udah pagi? ☀️", "Hoahm... halo lagi! 👋"];
+let snoreTimer = null;
+
+// While asleep: drifting 💤 and a sleepy line now and then.
+function startSnoring() {
+  stopSnoring();
+  say("charMain", "Zzz... 😴", 0, { mood: "sleep", priority: 1 });
+  let beat = 0;
+  snoreTimer = setInterval(() => {
+    if (document.hidden) return;
+    floatEmojis("charMain", ["💤", "💤", "✨"], 1);
+    if (++beat % 4 === 0) say("charMain", SLEEP_LINES[Math.floor(Math.random() * SLEEP_LINES.length)], 0, { mood: "sleep", priority: 1 });
+  }, 1800);
+}
+
+function stopSnoring() {
+  clearInterval(snoreTimer);
+  snoreTimer = null;
+}
+
+// The first tap, click or key press anywhere wakes Joko before the action itself runs.
+function wakeOnInteraction(e) {
+  if (window.getGameService?.()?.state.value !== "sleep") return;
+  if (e.type === "keydown" && ["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
+  window.wakeUp?.();
+}
+
 function onStateChange(state) {
+  if (state === "sleep") startSnoring();
+  else if (snoreTimer) {
+    stopSnoring();
+    hush("charMain");
+    react("charMain", "pet-jump", 600);
+    say("charMain", WAKE_LINES[Math.floor(Math.random() * WAKE_LINES.length)], 1800, { mood: "happy" });
+  }
   const scene3D = !!mainPet3D()?.fx;
   if (state === "eating") {
     if (!scene3D) {
@@ -468,4 +505,6 @@ export function initPet() {
   setInterval(complainTick, 1000);
   spriteOf("charMain")?.addEventListener("click", onMainTap);
   window.addEventListener("pet:state", (e) => onStateChange(e.detail));
+  document.addEventListener("pointerdown", wakeOnInteraction, true);
+  document.addEventListener("keydown", wakeOnInteraction, true);
 }

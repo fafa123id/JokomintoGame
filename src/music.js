@@ -17,6 +17,7 @@ const GAME_VIEWS = {
   chessGame: "chess",
   memoryGame: "memory",
   simonGame: "simon",
+  versusGame: "versus",
 };
 const VOLUME = 0.32;
 const SLEEP_VOLUME = 0.12;
@@ -94,6 +95,7 @@ function setLevel(volume) {
 function sceneFor(state) {
   if (state !== "playing") return "menu";
   const view = Object.keys(GAME_VIEWS).find((id) => document.getElementById(id)?.style.display === "flex");
+  if (view === "versusGame") return document.getElementById(view).dataset.music || "xox";
   return view ? GAME_VIEWS[view] : scene;
 }
 

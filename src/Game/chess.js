@@ -300,8 +300,9 @@ function leave() {
   el("chessGame").style.display = "none";
 }
 
+export { start as startChess };
+
 export function initChess() {
-  document.querySelector('[data-action="chess"]')?.addEventListener("click", start);
   document.querySelector('[data-action="chess-again"]')?.addEventListener("click", start);
   document.querySelector('[data-action="chess-resign"]')?.addEventListener("click", resign);
   window.leaveChess = leave;

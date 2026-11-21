@@ -42,6 +42,16 @@ export const GAME = {
   timeSec: { word: 20, image: 30, tictactoe: 120, chess: 1200, memory: 124, simon: 600 },
 };
 
+// Online matches between players (tic-tac-toe and chess).
+export const MULTIPLAYER = {
+  turnSec: 300,
+  inviteSec: 5,
+  inviteGraceSec: 2,
+  drawRatio: 0.4,
+  difficulty: { tictactoe: 0.6, chess: 0.9 },
+  mood: { win: 30, draw: 20, lose: 10 },
+};
+
 export const MEMORY = {
   // Every card is shown face up this long at the start; the round clock runs after it.
   previewSec: 4,

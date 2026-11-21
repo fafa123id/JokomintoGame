@@ -41,6 +41,7 @@ export function sendEvent(eventType, eventData = {}) {
 
 // Update UI based on current state
 function updateUIBasedOnState(state) {
+  document.documentElement.classList.toggle("is-sleeping", state === "sleep");
   // Hide all menus first
   document.getElementById("menuGame").style.display = "none";
   document.getElementById("tebakKata").style.display = "none";
@@ -49,10 +50,10 @@ function updateUIBasedOnState(state) {
   document.getElementById("chessGame").style.display = "none";
   document.getElementById("memoryGame").style.display = "none";
   document.getElementById("simonGame").style.display = "none";
+  document.getElementById("versusGame").style.display = "none";
   document.getElementById("menuSabun").style.display = "none";
   document.getElementById("menuMakanan").style.display = "none";
   document.getElementById("MainCharDiv").style.display = "none";
-  document.getElementById("sleepOverlay").style.display = "none";
   document.getElementById("optionButton").style.display = "none";
   document.getElementById("statusBar").style.display = "block";
   // Show appropriate UI based on state
@@ -86,7 +87,10 @@ function updateUIBasedOnState(state) {
       // Game UI will be handled by individual game functions
       break;
     case "sleep":
-      document.getElementById("sleepOverlay").style.display = "flex";
+      // Joko naps right on the main screen; any interaction wakes him up.
+      document.getElementById("gameTitle").style.display = "none";
+      document.getElementById("optionButton").style.display = "flex";
+      document.getElementById("MainCharDiv").style.display = "flex";
       break;
     case "bathing":
     case "eating":
@@ -98,6 +102,7 @@ function updateUIBasedOnState(state) {
 
 // Wake up from sleep
 export function wakeUp() {
+  if (gameService?.state.value !== "sleep") return;
   sendEvent("WAKE");
   document.getElementById("charMain").src = "/asset/char/idle.png";
 }

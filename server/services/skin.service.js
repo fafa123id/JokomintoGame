@@ -4,6 +4,7 @@ import { User } from "../models/user.model.js";
 import { Pet } from "../models/pet.model.js";
 import { HttpError } from "../utils/httpError.js";
 import { getCurrentPet, mutatePet } from "./pet.service.js";
+import { announcePlayerChange } from "./match.service.js";
 import { SKINS, DEFAULT_SKIN } from "../config/skins.js";
 
 const isOwned = (owned, id) => SKINS[id].price === 0 || owned.includes(id);
@@ -41,5 +42,6 @@ export function buySkin(userId, skinId) {
 export function equipSkin(userId, skinId) {
   if (!isOwned(UserSkin.ownedBy(userId), skinId)) throw HttpError.badRequest("Buy this skin first");
   UserSkin.equip(userId, skinId);
+  announcePlayerChange(userId);
   return listSkins(userId);
 }

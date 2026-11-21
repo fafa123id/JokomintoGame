@@ -7,10 +7,12 @@ import gameRoutes from "./game.routes.js";
 import leaderboardRoutes from "./leaderboard.routes.js";
 import skinRoutes from "./skin.routes.js";
 import pushRoutes from "./push.routes.js";
+import { eventRoutes, friendRoutes, matchRoutes } from "./social.routes.js";
 
 const router = Router();
 
-router.use((req, res, next) => (req.path.startsWith("/game/") ? gameLimiter : apiLimiter)(req, res, next));
+const isGameplay = (path) => path.startsWith("/game/") || path.startsWith("/match/");
+router.use((req, res, next) => (isGameplay(req.path) ? gameLimiter : apiLimiter)(req, res, next));
 router.use(csrfGuard);
 router.use("/auth", authRoutes);
 router.use("/pet", petRoutes);
@@ -18,6 +20,9 @@ router.use("/game", gameRoutes);
 router.use("/leaderboard", leaderboardRoutes);
 router.use("/skins", skinRoutes);
 router.use("/push", pushRoutes);
+router.use("/events", eventRoutes);
+router.use("/friends", friendRoutes);
+router.use("/match", matchRoutes);
 router.use(notFound);
 
 export default router;

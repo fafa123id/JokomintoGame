@@ -1,3 +1,4 @@
+import { showMessage } from "../components.js";
 const LOW_TIME = 5;
 
 export function createTimerBar(timeElementId) {
@@ -95,21 +96,9 @@ export function focusPet(imgId) {
   window.scrollTo({ top: Math.max(0, top), behavior: reduced ? "auto" : "smooth" });
 }
 
-// Short result label right under the answer form.
+// Round result ("Benar!", "Salah! Sisa 2x") shown as a toast like every other message.
 export function answerFeedback(form, text, tone) {
-  if (!form) return;
-  let label = form.nextElementSibling?.classList.contains("answer-feedback") ? form.nextElementSibling : null;
-  if (!label) {
-    label = document.createElement("p");
-    label.className = "answer-feedback";
-    label.setAttribute("role", "status");
-    label.setAttribute("aria-live", "polite");
-    form.after(label);
-  }
-  label.textContent = text;
-  label.className = `answer-feedback answer-feedback--${tone} is-visible`;
-  clearTimeout(label._timer);
-  label._timer = setTimeout(() => label.classList.remove("is-visible"), 2200);
+  showMessage(text, tone === "good" ? "success" : "error", 2200);
 }
 
 // Delayed end-of-round actions that must be cancelled when a new round starts or the player leaves.

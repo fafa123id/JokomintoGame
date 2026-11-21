@@ -29,11 +29,16 @@ if (!config.isTest) {
   startNeedsDecay({ log: (message) => console.log(message) });
 }
 
+const { resumeMatches } = await import("./services/match.service.js");
+const { closeAll: closeStreams } = await import("./realtime/hub.js");
+resumeMatches();
+
 const server = createApp().listen(config.port, () => {
   console.log(`JokomintoGame listening on http://localhost:${config.port} (${config.env})`);
 });
 
 function shutdown() {
+  closeStreams();
   server.close(() => {
     closeDb();
     process.exit(0);

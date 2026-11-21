@@ -1,4 +1,5 @@
 import { getDb } from "../database/connection.js";
+import { newUid } from "../utils/uid.js";
 
 const db = () => getDb();
 
@@ -23,15 +24,25 @@ export const User = {
     return db().prepare("SELECT * FROM users WHERE google_id = ?").get(googleId);
   },
 
+  findByUid(uid) {
+    return db().prepare("SELECT * FROM users WHERE uid = ?").get(uid);
+  },
+
   create({ name, email = null, passwordHash = null, googleId = null, isGuest = true }) {
     const now = Date.now();
-    const { lastInsertRowid } = db()
-      .prepare(
-        `INSERT INTO users (name, email, password_hash, google_id, is_guest, created_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .run(name, email, passwordHash, googleId, isGuest ? 1 : 0, now, now);
-    return this.find(Number(lastInsertRowid));
+    const insert = db().prepare(
+      `INSERT INTO users (name, email, password_hash, google_id, is_guest, created_at, last_seen_at, uid)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    );
+    // A UID collision is astronomically rare; retry on the unique index instead of checking first.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const { lastInsertRowid } = insert.run(name, email, passwordHash, googleId, isGuest ? 1 : 0, now, now, newUid());
+        return this.find(Number(lastInsertRowid));
+      } catch (err) {
+        if (attempt >= 3 || !String(err.message).includes("users.uid")) throw err;
+      }
+    }
   },
 
   update(id, fields) {
@@ -65,6 +76,7 @@ export const User = {
       name: user.name,
       email: user.email,
       isGuest: !!user.is_guest,
+      uid: user.uid,
       skin: user.equipped_skin ?? "classic",
     };
   },

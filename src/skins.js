@@ -94,9 +94,12 @@ function syncSpriteImage(img, skinId) {
   if (img.getAttribute("src") !== next) img.setAttribute("src", next);
 }
 
+// Sprites with a fixed skin (an opponent's Joko) keep it instead of following the player's skin.
+const skinFor = (img) => img.closest(".pet-sprite")?.dataset.fixedSkin || currentSkin;
+
 function watchSpriteImage(img) {
   if (img._skinObserver) return;
-  img._skinObserver = new MutationObserver(() => syncSpriteImage(img, currentSkin));
+  img._skinObserver = new MutationObserver(() => syncSpriteImage(img, skinFor(img)));
   img._skinObserver.observe(img, { attributes: true, attributeFilter: ["src"] });
 }
 
@@ -113,8 +116,15 @@ export function applySkin(skinId) {
   currentSkin = SKIN_STYLES[skinId] ? skinId : "classic";
   for (const sprite of sprites()) {
     watchSpriteImage(sprite.querySelector("img"));
-    dressSprite(sprite, currentSkin);
+    if (!sprite.dataset.fixedSkin) dressSprite(sprite, currentSkin);
   }
+}
+
+export function dressFixedSkin(sprite, skinId) {
+  if (!sprite?.querySelector("img")) return;
+  sprite.dataset.fixedSkin = SKIN_STYLES[skinId] ? skinId : "classic";
+  watchSpriteImage(sprite.querySelector("img"));
+  dressSprite(sprite, sprite.dataset.fixedSkin);
 }
 
 function previewSprite(skinId) {

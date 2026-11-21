@@ -1,5 +1,3 @@
-import { html } from "./modal.js";
-
 const KEY = "jm_sound";
 let muted = readMuted();
 
@@ -15,7 +13,7 @@ export function isMuted() {
   return muted;
 }
 
-function setMuted(next) {
+export function setMuted(next) {
   muted = next;
   try {
     localStorage.setItem(KEY, next ? "off" : "on");
@@ -34,21 +32,6 @@ function applyMute() {
   });
 }
 
-export function initSoundToggle() {
-  const toolbar = document.querySelector("[data-open-leaderboard]")?.parentElement;
-  if (!toolbar) return;
-  const button = html(`<button type="button" class="h-12 w-12 rounded-full bg-white/90 text-xl shadow-lg hover:bg-white"></button>`);
-  const render = () => {
-    button.textContent = muted ? "🔇" : "🔊";
-    button.setAttribute("aria-label", muted ? "Unmute sounds" : "Mute sounds");
-    button.setAttribute("aria-pressed", String(muted));
-    button.title = muted ? "Sound: off" : "Sound: on";
-  };
-  button.addEventListener("click", () => {
-    setMuted(!muted);
-    render();
-  });
-  render();
+export function initSound() {
   applyMute();
-  toolbar.appendChild(button);
 }

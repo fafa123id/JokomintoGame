@@ -2,6 +2,7 @@ import { api, state, setPet } from "./api.js";
 import { updateChar, updateContext, showMessage } from "./components.js";
 import { openModal, closeModal, html, ui, confirmDialog } from "./modal.js";
 import { notificationButton } from "./notifications.js";
+import { uidCard } from "./friends.js";
 
 let googleClientId = null;
 let googleInitialized = false;
@@ -30,9 +31,9 @@ export function requireSession() {
   });
 }
 
-async function handleAuthResponse(res, errEl) {
+async function handleAuthResponse(res) {
   if (res.error) {
-    errEl.textContent = res.error;
+    showMessage(res.error, "error", 2600, true);
     return false;
   }
   await applySession(res.user);
@@ -47,11 +48,9 @@ function bindSubmit(form, handler) {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const btn = form.querySelector('button[type="submit"]');
-    const errEl = form.querySelector("[data-error]");
     btn.disabled = true;
-    errEl.textContent = "";
     try {
-      await handler(errEl);
+      await handler();
     } finally {
       btn.disabled = false;
     }
@@ -73,7 +72,6 @@ function showGuestView() {
       <p class="${ui.subtitle}">Play as a guest. You can save your progress later.</p>
       <form class="space-y-3" novalidate>
         <input name="name" type="text" maxlength="20" placeholder="Your name" class="${ui.input}" autocomplete="nickname">
-        <p data-error class="${ui.error}" role="alert"></p>
         <button type="submit" class="${ui.primary}">Play as Guest</button>
       </form>
       ${googleSection()}
@@ -82,9 +80,9 @@ function showGuestView() {
       </p>
     </div>`);
   const form = view.querySelector("form");
-  bindSubmit(form, async (errEl) => {
+  bindSubmit(form, async () => {
     const res = await api("/api/auth/guest", { name: form.name.value });
-    await handleAuthResponse(res, errEl);
+    await handleAuthResponse(res);
   });
   view.querySelector('[data-go="login"]').addEventListener("click", () => showCredentialsView("login"));
   renderGoogleButton(view);
@@ -111,7 +109,6 @@ function showCredentialsView(mode) {
         <input name="email" type="email" placeholder="Email" class="${ui.input}" autocomplete="email">
         <input name="password" type="password" maxlength="72" placeholder="${isRegister ? "Password (min 8 chars)" : "Password"}"
           class="${ui.input}" autocomplete="${isRegister ? "new-password" : "current-password"}">
-        <p data-error class="${ui.error}" role="alert"></p>
         <button type="submit" class="${ui.primary}">${isRegister ? "Create Account" : "Login"}</button>
       </form>
       ${googleSection()}
@@ -125,11 +122,11 @@ function showCredentialsView(mode) {
   const form = view.querySelector("form");
   if (isRegister && state.user?.name) form.name.value = state.user.name;
 
-  bindSubmit(form, async (errEl) => {
+  bindSubmit(form, async () => {
     const body = { email: form.email.value, password: form.password.value };
     if (isRegister && form.name.value.trim()) body.name = form.name.value;
     const res = await api(isRegister ? "/api/auth/register" : "/api/auth/login", body);
-    if (!(await handleAuthResponse(res, errEl))) form.password.value = "";
+    if (!(await handleAuthResponse(res))) form.password.value = "";
   });
   view.querySelector("[data-switch]").addEventListener("click", () => showCredentialsView(isRegister ? "login" : "register"));
 
@@ -146,8 +143,10 @@ function showAccountView() {
         <h2 data-name class="font-game text-2xl text-gray-800"></h2>
         <p data-status class="text-sm text-gray-500"></p>
       </div>
+      <div data-uid class="mb-4"></div>
       <div data-actions class="space-y-3"></div>
     </div>`);
+  if (user.uid) view.querySelector("[data-uid]").append(uidCard(user.uid));
   view.querySelector("[data-name]").textContent = user.name;
   view.querySelector("[data-status]").textContent = user.isGuest
     ? "Guest · progress is only on this device"
@@ -203,9 +202,8 @@ async function loadGoogle() {
   google.accounts.id.initialize({
     client_id: googleClientId,
     callback: async ({ credential }) => {
-      const errEl = document.querySelector("#appModal [data-error]");
       const res = await api("/api/auth/google", { credential });
-      await handleAuthResponse(res, errEl ?? document.createElement("p"));
+      await handleAuthResponse(res);
     },
   });
   googleInitialized = true;

@@ -1,43 +1,48 @@
 import { isMuted } from "./sound.js";
 import { state, refreshPet } from "./api.js";
 import { setExpression } from "./pet.js";
-// Global variable untuk menyimpan timeout reference
-let messageTimeout = null;
+const TOAST_LIMIT = 3;
+let toastStack = null;
 
-function showMessage($message, $type, $duration = 2000, needSound = false) {
-  //message component
-
-  // Clear timeout sebelumnya jika ada
-  if (messageTimeout) {
-    clearTimeout(messageTimeout);
-    messageTimeout = null;
+// Toast notifications at the top of the screen, above modals and overlays.
+function showMessage(message, type = "success", duration = 2000, needSound = false) {
+  if (needSound) playSoundEffect(type === "success" ? "success" : "error");
+  if (!toastStack) {
+    toastStack = document.createElement("div");
+    toastStack.className = "toast-stack";
+    toastStack.setAttribute("role", "status");
+    toastStack.setAttribute("aria-live", "polite");
+    document.body.appendChild(toastStack);
+  }
+  // Same text already showing: just restart its timer.
+  const existing = [...toastStack.children].find((t) => t.dataset.text === message && !t.classList.contains("is-leaving"));
+  if (existing) {
+    clearTimeout(existing._timer);
+    existing._timer = setTimeout(() => dismissToast(existing), duration);
+    return;
   }
 
-  if ($type === "success") {
-    if (needSound) {
-      playSoundEffect("success");
-    }
-    document.getElementById("message-container").style.backgroundColor =
-      "#4BB543";
-  } else {
-    document.getElementById("message-container").style.backgroundColor =
-      "#FF0000";
-    if (needSound) {
-      playSoundEffect("error");
-    }
-  }
-  window.scrollTo({
-    top: 0,
-    behavior: "smooth",
-  });
-  document.getElementById("message-container").style.display = "flex";
-  document.getElementById("message").innerText = $message;
+  const toast = document.createElement("div");
+  toast.className = `toast toast--${type === "success" ? "success" : "error"}`;
+  toast.dataset.text = message;
+  const icon = document.createElement("span");
+  icon.className = "toast-icon";
+  icon.textContent = type === "success" ? "✓" : "!";
+  const text = document.createElement("span");
+  text.className = "toast-text";
+  text.textContent = message;
+  toast.append(icon, text);
+  toast.addEventListener("click", () => dismissToast(toast));
+  toastStack.appendChild(toast);
+  while (toastStack.childElementCount > TOAST_LIMIT) toastStack.firstElementChild.remove();
+  toast._timer = setTimeout(() => dismissToast(toast), duration);
+}
 
-  // Simpan reference timeout yang baru
-  messageTimeout = setTimeout(() => {
-    document.getElementById("message-container").style.display = "none";
-    messageTimeout = null; // Reset reference setelah timeout selesai
-  }, $duration);
+function dismissToast(toast) {
+  if (toast.classList.contains("is-leaving")) return;
+  clearTimeout(toast._timer);
+  toast.classList.add("is-leaving");
+  setTimeout(() => toast.remove(), 250);
 }
 let timeoutId = null;
 
@@ -183,11 +188,6 @@ function updateChar() {
   // Check if in sleep state
   if (gameService && gameService.state.value === "sleep") {
     setExpression(charmain, "sleep");
-    // Add click listener to wake up
-    charmain.onclick = () => {
-      wakeUp();
-      charmain.onclick = null; // Remove listener
-    };
     return;
   }
 

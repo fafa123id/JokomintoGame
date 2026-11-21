@@ -154,6 +154,7 @@ export const machine = createMachine({
         window.leaveChess?.();
         window.leaveMemory?.();
         window.leaveSimon?.();
+        window.leaveVersus?.();
     },
     increaseHunger: () => updateContext(),
     increaseMood: () => updateContext(),
