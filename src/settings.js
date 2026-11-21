@@ -1,5 +1,5 @@
 import { html, openModal } from "./modal.js";
-import { isMuted, setMuted } from "./sound.js";
+import { isMuted, setMuted, getLevel, setVolume } from "./sound.js";
 import { motionEnabled, setMotionEnabled } from "./motion.js";
 import { state } from "./api.js";
 
@@ -43,6 +43,27 @@ function row({ icon, title, hint, checked, onChange, disabled = false }) {
   return item;
 }
 
+function slider({ icon, title, kind }) {
+  const item = html(`
+    <label class="settings-row settings-row--slider">
+      <span class="settings-icon" aria-hidden="true"></span>
+      <span class="settings-text"><strong></strong><small></small></span>
+      <input type="range" class="settings-range" min="0" max="100" step="5">
+    </label>`);
+  item.querySelector(".settings-icon").textContent = icon;
+  item.querySelector("strong").textContent = title;
+  const value = item.querySelector("small");
+  const input = item.querySelector("input");
+  input.value = Math.round(getLevel(kind) * 100);
+  input.setAttribute("aria-label", `${title} volume`);
+  value.textContent = `${input.value}%`;
+  input.addEventListener("input", () => {
+    value.textContent = `${input.value}%`;
+    setVolume(kind, input.value / 100);
+  });
+  return item;
+}
+
 function openSettings() {
   const view = html(`
     <div>
@@ -53,6 +74,10 @@ function openSettings() {
   const rows = view.querySelector("[data-rows]");
   rows.append(
     row({ icon: "🔊", title: "Sound & music", hint: "Sound effects and background music", checked: !isMuted(), onChange: (on) => setMuted(!on) }),
+    slider({ icon: "🎚️", title: "Master volume", kind: "master" }),
+    slider({ icon: "🎵", title: "Music", kind: "music" }),
+    slider({ icon: "💥", title: "Sound effects", kind: "effects" }),
+    slider({ icon: "🎙️", title: "Announcer (Jokoman)", kind: "voice" }),
     row({
       icon: "✨",
       title: "3D animations",

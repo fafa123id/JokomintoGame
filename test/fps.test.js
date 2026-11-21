@@ -5,7 +5,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
-import { CELL, KEY, createBody, step, hitboxes, rayBox, rayWorld, aimDirection, collides } from "../src/fps/shared/physics.js";
+import { CELL, KEY, createBody, step, hitboxes, rayBox, rayWorld, aimDirection, collides, traceShot } from "../src/fps/shared/physics.js";
+import { WEAPONS } from "../src/fps/shared/weapons.js";
+import { HEROES as heroList } from "../src/fps/shared/heroes.js";
+import { RULES } from "../src/fps/shared/rules.js";
 import { MAPS, MAP_IDS, isWalkable } from "../src/fps/shared/maps.js";
 import { Room } from "../server/fps/room.js";
 
@@ -85,12 +88,12 @@ test("a bots-only match runs to the end", () => {
   const rng = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
   let result = null;
   const room = new Room({ mapId: "pabrik", clock: () => t, rng, autoTick: false, onEnd: (r, res) => (result = res) });
-  for (let i = 0; i < 20 * 60 * 25 && !room.over; i++) {
+  for (let i = 0; i < 20 * 60 * 60 && !room.over; i++) {
     t += 50;
     room.tick();
   }
   assert.ok(room.over);
-  assert.ok(Object.values(room.score).includes(5));
+  assert.ok(Object.values(room.score).includes(RULES.roundsToWin));
   assert.deepEqual(result.results, []);
 });
 
@@ -106,6 +109,8 @@ function humanRoom(mapId = "pantai") {
   const room = new Room({
     mapId,
     clock: clock.now,
+    // rng 0: the human attacker always draws the bomb.
+    rng: () => 0,
     autoTick: false,
     humans: [
       { userId: 1, name: "Attacker", skin: "classic", socket: red },
@@ -191,6 +196,241 @@ test("defenders get no site, carrier or timer once the bomb is planted", () => {
   assert.ok(Number.isFinite(blue.inbox.at(-1).bomb.planted.x));
   assert.equal(blue.inbox.at(-1).bomb.planted.site, undefined);
 });
+
+test("any weapon but the knife can be dropped and picked up by an empty slot", () => {
+  const { room, clock, attacker, defender } = humanRoom();
+  room.round.phase = "live";
+  room.switchWeapon(attacker, "knife", true);
+  room.dropWeapon(attacker);
+  assert.equal(attacker.weapon, "knife", "the knife stays");
+  room.switchWeapon(attacker, "rifle", true);
+  attacker.ammo.rifle.mag = 7;
+  room.dropWeapon(attacker);
+  assert.equal(attacker.ammo.rifle, undefined);
+  assert.equal(attacker.weapon, "pistol");
+  assert.equal(room.ground.length, 1);
+  const gun = room.ground[0];
+  room.updateGround(clock.now());
+  assert.equal(room.ground.length, 1, "the dropper can't grab it straight back");
+  // An enemy who already has a rifle walks over it: nothing happens. Without one, they take it.
+  defender.body = createBody(gun.x, gun.z);
+  room.updateGround(clock.advance(100));
+  assert.equal(room.ground.length, 1);
+  delete defender.ammo.rifle;
+  room.updateGround(clock.advance(100));
+  assert.equal(room.ground.length, 0);
+  assert.equal(defender.ammo.rifle.mag, 7, "ammo travels with the gun");
+  // Dying drops your best gun.
+  room.damage(attacker, defender, 200, "body");
+  assert.equal(room.ground.at(-1).w, "rifle");
+});
+
+test("weight: the knife runs a bit faster than a rifle", () => {
+  const map = { ...MAPS.pantai, grid: MAPS.pantai.grid.map((r) => r.replace(/[#=]/g, ".")) };
+  const run = (weapon) => {
+    const body = createBody(12.5 * CELL, 18.5 * CELL, 0);
+    for (let i = 0; i < 15; i++) step(map, body, KEY.FORWARD, 0, 0, 1 / 30, { speed: WEAPONS[weapon].speed });
+    return 18.5 * CELL - body.z;
+  };
+  const rifle = run("rifle");
+  const knife = run("knife");
+  assert.ok(knife > rifle * 1.18 && knife < rifle * 1.32, `${knife} vs ${rifle}`);
+  assert.ok(run("pistol") > rifle);
+});
+
+test("bullets drop over distance", () => {
+  const map = MAPS.pantai;
+  const origin = { x: 12.5 * CELL, y: 1.6, z: 24 * CELL };
+  const shot = traceShot(map, origin, aimDirection(0, 0), { speed: 320, range: 60 });
+  assert.ok(shot.points.length > 3);
+  assert.ok(shot.end.y < origin.y, "lower at the end than at the muzzle");
+  const far = traceShot({ ...map, grid: map.grid.map((r) => r.replace(/[#=]/g, ".")) }, origin, aimDirection(0, 0), { speed: 320, range: 90 });
+  const drop = origin.y - far.end.y;
+  assert.ok(drop > 0.2 && drop < 0.6, `drop ${drop}`);
+});
+
+test("kill streaks, ace and clutch are reported", () => {
+  const { room, clock, attacker, red } = humanRoom();
+  room.round.phase = "live";
+  const enemies = room.playersOn("defend");
+  enemies.forEach((e, i) => {
+    clock.advance(i === 3 ? 20_000 : 1000);
+    room.damage(attacker, e, 200, "body");
+  });
+  const kills = red.inbox.filter((m) => m.t === "kill");
+  assert.deepEqual(kills.map((k) => k.streak), [1, 2, 3, 4, 5], "counted per round, however far apart");
+  assert.equal(kills.at(-1).ace, true);
+  assert.equal(kills.filter((k) => k.ace).length, 1);
+
+  // Clutch: last attacker alive against three, then wins the round.
+  const next = humanRoom();
+  next.room.round.phase = "live";
+  const [, ...mates] = next.room.playersOn("attack");
+  const foes = next.room.playersOn("defend");
+  for (const m of mates) next.room.damage(foes[0], m, 200, "body");
+  for (const f of foes.slice(0, 2)) next.room.damage(next.attacker, f, 200, "body");
+  for (const f of foes.slice(2)) next.room.damage(next.attacker, f, 200, "body");
+  next.room.updateBomb(next.clock.now());
+  const end = next.red.inbox.find((m) => m.t === "round_end");
+  assert.deepEqual(end.clutch, { id: next.attacker.id, vs: 5 });
+});
+
+test("assists go to the two teammates who did the most damage", () => {
+  const { room, red } = humanRoom();
+  room.round.phase = "live";
+  const [killer, a, b, c] = room.playersOn("attack");
+  const victim = room.playersOn("defend")[0];
+  room.damage(c, victim, 10, "body");
+  room.damage(a, victim, 40, "body");
+  room.damage(b, victim, 25, "body");
+  room.damage(killer, victim, 100, "body");
+  const kill = red.inbox.find((m) => m.t === "kill");
+  assert.deepEqual(kill.assists, [a.id, b.id]);
+  assert.equal(a.assists, 1);
+  assert.equal(c.assists, 0);
+  assert.equal(room.roster().find((p) => p.id === b.id).assists, 1);
+});
+
+test("sides swap every few rounds and match point is announced", () => {
+  const { room, red } = humanRoom();
+  const sides = [1, 5, 6, 10, 11].map((n) => room.sideOf("red", n));
+  assert.deepEqual(sides, ["attack", "attack", "defend", "defend", "attack"]);
+  room.score = { red: 9, blue: 2 };
+  for (let n = 1; n < 6; n++) room.startRound();
+  const rounds = red.inbox.filter((m) => m.t === "round");
+  assert.equal(rounds.at(-1).n, 6);
+  assert.equal(rounds.at(-1).swap, true);
+  assert.deepEqual(rounds.at(-1).matchPoint, ["red"]);
+  assert.equal(rounds.find((m) => m.n === 3).swap, false);
+});
+
+test("hero select: unique per team, bots give way, hidden from the enemy, 20 s limit", () => {
+  let t = 1_000_000;
+  const sockets = [fakeSocket(), fakeSocket()];
+  const room = new Room({
+    mapId: "pantai",
+    clock: () => t,
+    rng: () => 0.3,
+    autoTick: false,
+    heroPick: true,
+    humans: [
+      { userId: 1, name: "Me", skin: "classic", socket: sockets[0] },
+      { userId: 2, name: "Them", skin: "classic", socket: sockets[1] },
+    ],
+  });
+  const me = room.playerOf(1);
+  assert.equal(room.round.phase, "pick");
+  // Bots hover and lock within a few seconds.
+  for (let i = 0; i < 100; i++) {
+    t += 50;
+    room.tick();
+  }
+  const bots = room.teammates(me.team).filter((p) => p.bot);
+  assert.ok(bots.every((b) => b.locked), "bots locked");
+  // Taking a bot's hero makes that bot switch.
+  const victim = bots[0];
+  const wanted = victim.hero;
+  room.heroAction(me, { action: "lock", id: wanted });
+  assert.equal(me.hero, wanted);
+  assert.notEqual(victim.hero, wanted);
+  assert.notEqual(victim.hover, wanted);
+  // Enemy picks never reach this team.
+  const pick = sockets[0].inbox.filter((m) => m.t === "pick").at(-1);
+  assert.ok(pick.team.every((q) => room.players.get(q.id).team === me.team));
+  assert.ok(room.welcome(me).players.filter((q) => q.team !== me.team).every((q) => q.hero === null));
+  // Unlock and relock work; time runs out at 20 s and everyone ends up with a distinct hero.
+  room.heroAction(me, { action: "unlock" });
+  assert.equal(me.locked, false);
+  t += 21_000;
+  room.tick();
+  assert.equal(room.round.phase, "buy");
+  for (const team of ["red", "blue"]) {
+    const heroes = room.teammates(team).map((p) => p.hero);
+    assert.equal(new Set(heroes).size, heroes.length, `${team} heroes are unique`);
+    assert.ok(heroes.every(Boolean));
+  }
+  assert.ok(sockets[1].inbox.some((m) => m.t === "pick_done"));
+});
+
+// Open plaza on pantai: viewer at (12.5, 18.5) cells, enemy 6 cells north (see the vision test).
+function abilityRoom() {
+  const env = humanRoom();
+  const { room, attacker, defender } = env;
+  room.round.phase = "live";
+  for (const p of room.players.values()) if (p !== attacker && p !== defender) p.alive = false;
+  attacker.body = createBody(12.5 * CELL, 18.5 * CELL, 0);
+  defender.body = createBody(12.5 * CELL, 14.5 * CELL, Math.PI);
+  return env;
+}
+const run = (env, ms) => {
+  for (let i = 0; i < ms / 50; i++) env.room.abilities.tick(env.clock.advance(50), 0.05);
+};
+
+test("every skill and ultimate goes off without errors", () => {
+  const { HEROES } = { HEROES: heroList };
+  for (const hero of HEROES) {
+    for (const slot of ["skill", "ult"]) {
+      const env = abilityRoom();
+      const { room, attacker, defender } = env;
+      attacker.hero = hero.id;
+      attacker.abil.ult = 100;
+      if (hero.ult.id === "revive") room.abilities.fallen.push({ id: room.playersOn("attack")[1].id, team: attacker.team, at: 0 });
+      const used = room.abilities.use(attacker, slot, { y: 0, p: -0.05 });
+      assert.ok(used || hero.skill.id === "pull", `${hero.id} ${slot}`);
+      assert.doesNotThrow(() => run(env, 4000), `${hero.id} ${slot} ticks`);
+      assert.ok(defender.hp <= 100);
+    }
+  }
+});
+
+test("abilities: smoke hides, walls block, shields soak, grenades hurt, pulls drag", () => {
+  let env = abilityRoom();
+  assert.deepEqual(env.room.computeVision().red, [env.defender.id]);
+  env.attacker.hero = "kabut";
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: -0.1 });
+  assert.deepEqual(env.room.computeVision().red, [], "smoke blocks sight");
+
+  env = abilityRoom();
+  env.attacker.hero = "pagar";
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: -0.1 });
+  assert.equal(env.room.map.blocks.length, 1, "wall raised");
+  assert.ok(!lineOfSightTest(env.room, env.attacker, env.defender), "wall blocks the line");
+
+  env = abilityRoom();
+  env.defender.abil.shield = 40;
+  env.defender.abil.shieldUntil = Infinity;
+  env.room.damage(env.attacker, env.defender, 50, "body");
+  assert.equal(env.defender.hp, 90, "shield soaked 40");
+
+  env = abilityRoom();
+  env.attacker.hero = "petasan";
+  env.defender.body = createBody(env.attacker.body.x, env.attacker.body.z - 11, 0);
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: -0.3 });
+  run(env, 2500);
+  assert.ok(env.defender.hp < 100, "grenade hurt");
+
+  env = abilityRoom();
+  env.attacker.hero = "magnet";
+  const before = env.defender.body.z;
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: Math.atan2(1.2 - 1.6, 12) });
+  run(env, 600);
+  assert.ok(env.defender.body.z > before + 2, "pulled toward the caster");
+
+  env = abilityRoom();
+  env.attacker.hero = "radar";
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: 0 });
+  assert.ok(env.defender.abil.revealUntil > env.room.clock(), "scan reveals");
+
+  env = abilityRoom();
+  env.defender.hero = "dash";
+  env.defender.abil.ult = 100;
+  env.room.abilities.use(env.defender, "ult", { y: 0, p: 0 });
+  assert.deepEqual(env.room.computeVision().red, [], "stealth hides at range");
+});
+
+function lineOfSightTest(room, a, b) {
+  return rayWorld(room.map, { x: a.body.x, y: 1.6, z: a.body.z }, { x: 0, y: 0, z: -1 }, a.body.z - b.body.z) >= a.body.z - b.body.z - 0.05;
+}
 
 test("chat goes to the team or to everyone", () => {
   const { room, clock, attacker, red, blue } = humanRoom();
@@ -279,9 +519,13 @@ test("solo queue fills with bots and the match streams snapshots", async () => {
   assert.equal(welcome.players.filter((p) => !p.bot).length, 1);
   assert.ok(MAP_IDS.includes(welcome.map));
 
+  // Matches open with hero select; only our own team is listed.
+  assert.equal(welcome.phase, "pick");
+  const pick = await ws.next("pick");
+  assert.equal(pick.team.length, 5);
   const snap = await ws.next("snap");
   assert.equal(snap.ps.length, 9);
-  assert.equal(snap.round.phase, "buy");
+  assert.equal(snap.round.phase, "pick");
   for (let s = 1; s <= 5; s++) ws.send(JSON.stringify({ t: "in", s, k: KEY.FORWARD, y: 0, p: 0, d: 33 }));
   await new Promise((r) => setTimeout(r, 200));
   const later = await ws.next("snap");

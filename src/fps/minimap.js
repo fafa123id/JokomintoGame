@@ -74,13 +74,20 @@ export class Minimap {
   }
 
   // me: {x, z, yaw}; mates/enemies: [{id, x, z, yaw}]; seen: Set of enemy ids; bomb: {x, z, planted} | null
-  draw(now, { me, mates, enemies, seen, bomb }) {
+  draw(now, { me, mates, enemies, seen, bomb, smokes = [] }) {
     if (now - this.lastDraw < DRAW_MS) return;
     this.lastDraw = now;
     const ctx = this.ctx;
     ctx.clearRect(0, 0, this.size, this.size);
     ctx.drawImage(this.layout, 0, 0, this.size, this.size);
 
+    ctx.fillStyle = "rgba(203,213,225,0.55)";
+    for (const s of smokes) {
+      const [px, pz] = this.toPx(s.x, s.z);
+      ctx.beginPath();
+      ctx.arc(px, pz, (s.r / CELL) * this.scale, 0, Math.PI * 2);
+      ctx.fill();
+    }
     for (const e of enemies) if (seen.has(e.id)) this.lastSeen.set(e.id, { x: e.x, z: e.z, at: now });
     for (const [id, spot] of this.lastSeen) {
       const age = now - spot.at;

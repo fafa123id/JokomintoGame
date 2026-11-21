@@ -1,4 +1,5 @@
 // Weapon stats (server-authoritative; the client uses them for feel and HUD).
+// speed scales run speed (weight): heavy guns < 1, knife fastest. velocity is bullet speed in m/s.
 // Spread is in radians; it grows while moving, in the air and during a spray.
 export const WEAPONS = {
   rifle: {
@@ -19,6 +20,8 @@ export const WEAPONS = {
     sprayStep: 0.009,
     sprayMax: 0.055,
     range: 90,
+    velocity: 320,
+    speed: 1,
   },
   pistol: {
     id: "pistol",
@@ -38,6 +41,8 @@ export const WEAPONS = {
     sprayStep: 0.015,
     sprayMax: 0.05,
     range: 60,
+    velocity: 240,
+    speed: 1.1,
   },
   knife: {
     id: "knife",
@@ -48,12 +53,14 @@ export const WEAPONS = {
     backstab: 100,
     interval: 0.55,
     range: 2.2,
+    speed: 1.25,
   },
   bomb: {
     id: "bomb",
     name: "Bom Joko",
     slot: 4,
     utility: true,
+    speed: 1,
   },
 };
 

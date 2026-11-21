@@ -33,8 +33,15 @@ export function cellAt(map, cx, cz) {
 export const isSolid = (map, cx, cz) => SOLID.has(cellAt(map, cx, cz));
 export const toCell = (v) => Math.floor(v / CELL);
 
+// Ability walls and shields: axis-aligned boxes standing on the floor, { x0, z0, x1, z1, h }.
+function hitsBlock(map, x, z, r) {
+  for (const b of map.blocks ?? []) if (x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1) return true;
+  return false;
+}
+
 // Axis-aligned square footprint against solid cells.
 export function collides(map, x, z, r = PLAYER.radius) {
+  if (hitsBlock(map, x, z, r)) return true;
   const minX = toCell(x - r);
   const maxX = toCell(x + r);
   const minZ = toCell(z - r);
@@ -51,11 +58,14 @@ export function forwardOf(yaw) {
 }
 
 export function createBody(x, z, yaw = 0) {
-  return { x, y: 0, z, vx: 0, vy: 0, vz: 0, yaw, pitch: 0, grounded: true, crouch: false };
+  return { x, y: 0, z, vx: 0, vy: 0, vz: 0, yaw, pitch: 0, grounded: true, crouch: false, dashT: 0, dvx: 0, dvz: 0 };
 }
 
 // One fixed simulation step. dt is in seconds.
-export function step(map, body, keys, yaw, pitch, dt, { frozen = false } = {}) {
+// speed scales ground speed (weapon weight, slow zones); jump scales jump height; pads are launch
+// pads [{x, z, r}] this player may use. A dash in progress (body.dashT) overrides movement.
+export const PAD_LAUNCH = 11;
+export function step(map, body, keys, yaw, pitch, dt, { frozen = false, speed: speedScale = 1, jump = 1, pads = null } = {}) {
   body.yaw = yaw;
   body.pitch = Math.max(-1.45, Math.min(1.45, pitch));
   body.crouch = !!(keys & KEY.CROUCH);
@@ -73,8 +83,12 @@ export function step(map, body, keys, yaw, pitch, dt, { frozen = false } = {}) {
   const len = Math.hypot(ix, iz);
   if (len > 0) (ix /= len), (iz /= len);
 
-  const speed = body.crouch ? PLAYER.crouchSpeed : keys & KEY.WALK ? PLAYER.walkSpeed : PLAYER.speed;
-  if (body.grounded) {
+  const speed = (body.crouch ? PLAYER.crouchSpeed : keys & KEY.WALK ? PLAYER.walkSpeed : PLAYER.speed) * speedScale;
+  if (body.dashT > 0 && !frozen) {
+    body.dashT = Math.max(0, body.dashT - dt);
+    body.vx = body.dvx;
+    body.vz = body.dvz;
+  } else if (body.grounded) {
     body.vx = ix * speed;
     body.vz = iz * speed;
   } else {
@@ -90,7 +104,11 @@ export function step(map, body, keys, yaw, pitch, dt, { frozen = false } = {}) {
   else body.vz = 0;
 
   if (!frozen && keys & KEY.JUMP && body.grounded && !body.crouch) {
-    body.vy = PLAYER.jump;
+    body.vy = PLAYER.jump * jump;
+    body.grounded = false;
+  }
+  if (!frozen && body.grounded && pads?.some((p) => Math.hypot(body.x - p.x, body.z - p.z) < p.r)) {
+    body.vy = PAD_LAUNCH;
     body.grounded = false;
   }
   body.vy -= PLAYER.gravity * dt;
@@ -147,6 +165,10 @@ export function rayBox(o, d, min, max) {
 export function rayWorld(map, o, d, maxDist) {
   let best = maxDist;
   if (d.y < 0) best = Math.min(best, -o.y / d.y);
+  for (const b of map.blocks ?? []) {
+    const t = rayBox(o, d, { x: b.x0, y: 0, z: b.z0 }, { x: b.x1, y: b.h, z: b.z1 });
+    if (t !== null && t < best) best = t;
+  }
 
   let cx = toCell(o.x);
   let cz = toCell(o.z);
@@ -184,6 +206,23 @@ export function rayWorld(map, o, d, maxDist) {
   return best;
 }
 
+// Does a smoke sphere [{x, y, z, r}] cut the line between two points? Smoke blocks sight, not bullets.
+export function smokeBetween(smokes, a, b) {
+  if (!smokes?.length) return false;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dz = b.z - a.z;
+  const len2 = dx * dx + dy * dy + dz * dz || 1;
+  for (const s of smokes) {
+    const t = Math.max(0, Math.min(1, ((s.x - a.x) * dx + (s.y - a.y) * dy + (s.z - a.z) * dz) / len2));
+    const px = a.x + dx * t - s.x;
+    const py = a.y + dy * t - s.y;
+    const pz = a.z + dz * t - s.z;
+    if (px * px + py * py + pz * pz < s.r * s.r) return true;
+  }
+  return false;
+}
+
 // True when nothing solid blocks the straight line between two points.
 export function lineOfSight(map, a, b) {
   const dx = b.x - a.x;
@@ -193,4 +232,45 @@ export function lineOfSight(map, a, b) {
   if (dist < 1e-6) return true;
   const d = { x: dx / dist, y: dy / dist, z: dz / dist };
   return rayWorld(map, a, d, dist) >= dist - 0.05;
+}
+
+export const BULLET_GRAVITY = 9.8;
+const SEGMENT_SEC = 0.02;
+
+// Bullet flight with gravity, traced in short straight segments. hitTest(origin, dir, maxDist) returns
+// the nearest target hit on a segment as { t, ... } or null. Returns the path and what stopped it.
+export function traceShot(map, origin, dir, { speed, range }, hitTest = () => null) {
+  const points = [{ ...origin }];
+  let p = { ...origin };
+  let v = { x: dir.x * speed, y: dir.y * speed, z: dir.z * speed };
+  let travelled = 0;
+  while (travelled < range) {
+    const next = {
+      x: p.x + v.x * SEGMENT_SEC,
+      y: p.y + v.y * SEGMENT_SEC - 0.5 * BULLET_GRAVITY * SEGMENT_SEC * SEGMENT_SEC,
+      z: p.z + v.z * SEGMENT_SEC,
+    };
+    const dx = next.x - p.x;
+    const dy = next.y - p.y;
+    const dz = next.z - p.z;
+    const len = Math.min(Math.hypot(dx, dy, dz), range - travelled);
+    const d = { x: dx / Math.hypot(dx, dy, dz), y: dy / Math.hypot(dx, dy, dz), z: dz / Math.hypot(dx, dy, dz) };
+    const wall = rayWorld(map, p, d, len);
+    const hit = hitTest(p, d, wall);
+    if (hit) {
+      const end = { x: p.x + d.x * hit.t, y: p.y + d.y * hit.t, z: p.z + d.z * hit.t };
+      points.push(end);
+      return { points, end, hit, distance: travelled + hit.t };
+    }
+    if (wall < len) {
+      const end = { x: p.x + d.x * wall, y: p.y + d.y * wall, z: p.z + d.z * wall };
+      points.push(end);
+      return { points, end, hit: null, distance: travelled + wall };
+    }
+    travelled += len;
+    p = { x: p.x + d.x * len, y: p.y + d.y * len, z: p.z + d.z * len };
+    v = { x: v.x, y: v.y - BULLET_GRAVITY * SEGMENT_SEC, z: v.z };
+    points.push(p);
+  }
+  return { points, end: p, hit: null, distance: travelled };
 }

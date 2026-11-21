@@ -1568,3 +1568,113 @@
 .fps-root.is-touch .fps-chat.is-open { top: max(10px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); width: min(70vw, 460px); z-index: 2; }
 .fps-root.is-touch .fps-bombtag { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 64px); }
 .fps-root.is-dead .fps-slots { display: none; }
+
+/* Callouts: kill streaks, ace, clutch, match point */
+.fps-callout { position: absolute; left: 50%; top: 36%; transform: translate(-50%, 0) scale(0.7); display: flex; flex-direction: column; align-items: center; opacity: 0; pointer-events: none; text-align: center; transition: opacity 0.3s ease, transform 0.3s ease; }
+.fps-callout.is-on { opacity: 1; transform: translate(-50%, 0) scale(1); animation: fps-callout-pop 0.35s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.fps-callout strong { font-family: "Fredoka One", cursive; font-size: clamp(1.4rem, 5vw, 2.3rem); letter-spacing: 0.06em; color: #fde047; text-shadow: 0 0 18px rgba(253, 224, 71, 0.55), 0 2px 4px rgba(0, 0, 0, 0.7); }
+.fps-callout small { font-size: 0.8rem; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; opacity: 0.9; }
+.fps-callout.is-streak strong { color: #fb923c; }
+.fps-callout.is-ace strong { color: #f43f5e; font-size: clamp(1.8rem, 7vw, 3.2rem); text-shadow: 0 0 24px rgba(244, 63, 94, 0.7), 0 2px 4px rgba(0, 0, 0, 0.7); }
+.fps-callout.is-clutch strong { color: #a3e635; }
+.fps-callout.is-enemy strong { color: #f87171; }
+.fps-callout.is-matchpoint strong { color: #fbbf24; }
+.fps-callout.is-small strong { font-family: inherit; font-size: 0.9rem; font-weight: 800; color: #fff; letter-spacing: 0.02em; }
+.fps-callout.is-small { top: 62%; }
+.fps-banner.is-swap strong { color: #c4b5fd; letter-spacing: 0.05em; }
+@keyframes fps-callout-pop { 0% { transform: translate(-50%, 0) scale(1.6); opacity: 0; } 100% { transform: translate(-50%, 0) scale(1); opacity: 1; } }
+
+.fps-callout.is-kill strong { font-size: clamp(1.1rem, 3.5vw, 1.6rem); color: #fff; }
+.fps-feed-assist { opacity: 0.75; font-weight: 600; font-size: 0.7rem; }
+/* Volume sliders */
+.settings-row--slider { cursor: default; padding-top: 0.55rem; padding-bottom: 0.55rem; }
+.settings-range { flex: none; width: 46%; max-width: 180px; accent-color: #7c3aed; cursor: pointer; }
+.fps-root.is-dead.is-pov .fps-crosshair { display: block; }
+
+/* Hero select */
+.fps-pick { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; gap: 10px; padding: max(12px, env(safe-area-inset-top)) 16px max(12px, env(safe-area-inset-bottom)); background: radial-gradient(circle at 50% 10%, rgba(49, 46, 129, 0.92), rgba(10, 8, 24, 0.97) 70%); color: #fff; overflow-y: auto; }
+.fps-pick[hidden] { display: none; }
+.fps-pick-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fps-pick-head strong { display: block; font-family: "Fredoka One", cursive; font-size: clamp(1.3rem, 4vw, 2rem); }
+.fps-pick-head small { opacity: 0.7; font-size: 0.75rem; }
+.fps-pick-timer { min-width: 3.2rem; padding: 0.3rem 0.7rem; border-radius: 0.8rem; background: rgba(0, 0, 0, 0.45); font-size: 1.6rem; font-weight: 900; text-align: center; font-variant-numeric: tabular-nums; }
+.fps-pick-body { flex: 1; display: grid; grid-template-columns: minmax(150px, 220px) 1fr; gap: 14px; min-height: 0; }
+.fps-pick-team { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.fps-pick-team li { --hero: #475569; display: flex; align-items: center; gap: 8px; padding: 0.35rem 0.5rem; border-radius: 0.7rem; background: rgba(255, 255, 255, 0.06); border-left: 4px solid var(--hero); }
+.fps-pick-team li.is-me { background: rgba(251, 191, 36, 0.14); }
+.fps-pick-team li.is-locked small { color: #a3e635; font-weight: 800; }
+.fps-pick-team strong { display: block; font-size: 0.8rem; }
+.fps-pick-team small { font-size: 0.68rem; opacity: 0.8; }
+.fps-hero-icon { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border-radius: 50%; background: rgba(0, 0, 0, 0.35); font-size: 1.2rem; }
+.fps-pick-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; align-content: start; }
+.fps-pick-role { display: flex; flex-direction: column; gap: 6px; }
+.fps-pick-role > small { text-align: center; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; opacity: 0.8; }
+.fps-hero { --hero: #64748b; position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 0.55rem 0.3rem; border-radius: 0.9rem; color: #fff; background: linear-gradient(160deg, color-mix(in srgb, var(--hero) 45%, transparent), rgba(255, 255, 255, 0.04)); border: 2px solid rgba(255, 255, 255, 0.1); transition: transform 0.12s ease, border-color 0.12s ease; }
+.fps-hero:hover:not(:disabled) { transform: translateY(-2px); border-color: rgba(255, 255, 255, 0.4); }
+.fps-hero .fps-hero-icon { width: 44px; height: 44px; font-size: 1.5rem; }
+.fps-hero strong { font-size: 0.82rem; }
+.fps-hero em { min-height: 0.9rem; font-style: normal; font-size: 0.6rem; opacity: 0.8; }
+.fps-hero.is-mine { border-color: #fde047; box-shadow: 0 0 0 2px rgba(253, 224, 71, 0.35); }
+.fps-hero.is-locked { border-color: #a3e635; box-shadow: 0 0 18px rgba(163, 230, 53, 0.45); }
+.fps-hero.is-taken, .fps-hero:disabled:not(.is-locked) { opacity: 0.4; filter: grayscale(0.6); }
+.fps-pick-foot { display: flex; align-items: center; gap: 12px; }
+.fps-pick-detail { flex: 1; font-size: 0.82rem; opacity: 0.9; }
+.fps-pick-foot .fps-cta { width: auto; min-width: 180px; }
+.fps-pick-foot .fps-cta.is-unlock { background: rgba(255, 255, 255, 0.15); color: #fff; box-shadow: none; }
+.fps-pick-foot .fps-cta:disabled { opacity: 0.5; }
+@media (max-height: 480px), (max-width: 700px) {
+  .fps-pick-body { grid-template-columns: 1fr; }
+  .fps-pick-team { flex-direction: row; overflow-x: auto; }
+  .fps-pick-team li { min-width: 140px; }
+  .fps-hero { padding: 0.35rem 0.2rem; }
+  .fps-hero .fps-hero-icon { width: 34px; height: 34px; font-size: 1.15rem; }
+}
+
+/* Team portraits beside the score */
+.fps-roster { display: flex; gap: 4px; align-items: flex-start; }
+.fps-portrait { --hp: 100%; position: relative; display: flex; flex-direction: column; align-items: center; }
+.fps-portrait span { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 0.5rem; background: rgba(0, 0, 0, 0.5); font-size: 1rem; font-weight: 900; box-shadow: inset 0 0 0 2px var(--team, #fff); transition: filter 0.2s ease, opacity 0.2s ease; }
+.fps-portrait.is-red { --team: #f87171; }
+.fps-portrait.is-blue { --team: #60a5fa; }
+.fps-portrait span::after { content: ""; position: absolute; left: 3px; right: 3px; top: 27px; height: 2px; border-radius: 2px; background: linear-gradient(90deg, #4ade80 var(--hp), transparent var(--hp)); }
+.fps-portrait.is-dead span { filter: grayscale(1) brightness(0.45); opacity: 0.55; }
+.fps-portrait.is-dead span::before { content: "✕"; position: absolute; inset: 0 0 auto; height: 30px; display: grid; place-items: center; color: #f87171; font-size: 1.1rem; font-weight: 900; }
+.fps-portrait.is-dead span::after { display: none; }
+.fps-portrait.is-me span { box-shadow: inset 0 0 0 2px var(--team), 0 0 0 2px #fde047; }
+.fps-portrait small { margin-top: 1px; font-size: 0.5rem; font-weight: 900; letter-spacing: 0.08em; color: #fde047; }
+@media (max-width: 900px), (max-height: 480px) {
+  .fps-roster { gap: 2px; }
+  .fps-portrait span { width: 22px; height: 22px; font-size: 0.75rem; border-radius: 0.4rem; }
+  .fps-portrait span::after { top: 20px; }
+  .fps-portrait.is-dead span::before { height: 22px; font-size: 0.85rem; }
+}
+.fps-portrait.no-hp span::after { display: none; }
+
+/* Skill and ultimate */
+.fps-abilities { position: absolute; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 8px; }
+.fps-ability { --fill: 0%; position: relative; display: grid; place-items: center; width: 52px; height: 52px; border-radius: 0.8rem; background: rgba(0, 0, 0, 0.55); overflow: hidden; box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.15); }
+.fps-ability i { position: absolute; left: 0; right: 0; bottom: 0; height: var(--fill); background: rgba(255, 255, 255, 0.12); }
+.fps-ability span { position: relative; font-size: 1.45rem; filter: grayscale(0.8) brightness(0.7); }
+.fps-ability.is-ready span { filter: none; }
+.fps-ability.is-ready { box-shadow: inset 0 0 0 2px #fde047, 0 0 14px rgba(253, 224, 71, 0.4); }
+.fps-ability--ult.is-ready { box-shadow: inset 0 0 0 2px #f472b6, 0 0 18px rgba(244, 114, 182, 0.6); animation: fps-ult 1.2s ease-in-out infinite; }
+@keyframes fps-ult { 50% { box-shadow: inset 0 0 0 2px #f472b6, 0 0 28px rgba(244, 114, 182, 0.9); } }
+.fps-ability b { position: absolute; top: 2px; left: 5px; font-size: 0.6rem; opacity: 0.8; }
+.fps-ability small { position: absolute; bottom: 2px; right: 5px; font-size: 0.6rem; font-weight: 900; }
+.fps-shield { font-style: normal; font-weight: 900; color: #7dd3fc; font-size: 0.95rem; }
+.fps-hud.is-stealth::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 140px rgba(125, 211, 252, 0.45); }
+.fps-root.is-touch .fps-abilities { display: none; }
+.fps-root.is-dead .fps-abilities, .fps-root.is-dead .fps-btn--skill, .fps-root.is-dead .fps-btn--ult { display: none; }
+.fps-btn--skill, .fps-btn--ult { --fill: 0%; overflow: hidden; width: 50px; height: 50px; right: calc(6% + 160px); }
+.fps-btn--skill { bottom: calc(10% + 4px); }
+.fps-btn--ult { bottom: calc(10% + 64px); }
+.fps-btn--skill::before, .fps-btn--ult::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--fill); background: rgba(255, 255, 255, 0.18); }
+.fps-btn--skill span, .fps-btn--ult span { position: relative; filter: grayscale(0.8) brightness(0.7); }
+.fps-btn--skill.is-ready span, .fps-btn--ult.is-ready span { filter: none; }
+.fps-btn--skill.is-ready { border-color: #fde047; }
+.fps-btn--ult.is-ready { border-color: #f472b6; box-shadow: 0 0 14px rgba(244, 114, 182, 0.7); }
+.fps-btn--skill i, .fps-btn--ult i { position: absolute; bottom: 2px; font-style: normal; font-size: 0.55rem; }
+
+.fps-pick-name { font-weight: 900; font-size: 0.95rem; margin-bottom: 2px; }
+.fps-pick-ab { font-size: 0.78rem; opacity: 0.92; }
+.fps-pick-counter { font-size: 0.7rem; opacity: 0.65; margin-top: 2px; }

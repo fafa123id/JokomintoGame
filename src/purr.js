@@ -1,4 +1,4 @@
-import { isMuted } from "./sound.js";
+import { isMuted, getVolume } from "./sound.js";
 
 // Cat-like purr synthesized with Web Audio: low filtered noise, amplitude-modulated at ~24 Hz,
 // with a slow in/out "breathing" swell.
@@ -49,7 +49,9 @@ export function startPurr() {
 
   const breath = c.createGain();
   breath.gain.value = 0.0001;
-  source.connect(lowpass).connect(flutter).connect(breath).connect(c.destination);
+  const level = c.createGain();
+  level.gain.value = getVolume("effects");
+  source.connect(lowpass).connect(flutter).connect(breath).connect(level).connect(c.destination);
 
   const now = c.currentTime;
   source.start(now);

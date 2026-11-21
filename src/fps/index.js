@@ -6,10 +6,12 @@ import { FpsGame } from "./game.js";
 import { MAPS } from "./shared/maps.js";
 import { isTouchDevice } from "./controls.js";
 import * as sfx from "./audio.js";
+import { announce } from "./announcer.js";
+import { loadModels, modelsReady } from "./assets.js";
 
 // Jokoman 5v5: lobby, matchmaking screen, the match itself and the result screen.
 const MODES = [
-  { id: "bomb", icon: "💣", name: "Bomb", hint: "Plant or defuse · first to 5 rounds", ready: true },
+  { id: "bomb", icon: "💣", name: "Bomb", hint: "Plant or defuse · first to 10 rounds · swap every 5", ready: true },
   { id: "hostage", icon: "🧑‍🤝‍🧑", name: "Hostage", hint: "Coming soon", ready: false },
   { id: "ranked", icon: "🏆", name: "Ranked", hint: "Coming soon", ready: false },
   { id: "custom", icon: "🛠️", name: "Custom lobby", hint: "Coming soon", ready: false },
@@ -52,7 +54,7 @@ function lobby(message = "") {
       <p class="fps-note" data-note></p>
       <details class="fps-howto">
         <summary>Controls</summary>
-        <p>${isTouchDevice() ? "Left thumb: move · Drag right side: aim · 🔫 shoot (drag to aim while shooting) · ⤒ jump · ⤓ crouch · ↻ reload · weapon bar to switch · 💣 hold to plant/defuse · 💬 chat · ☰ menu" : "WASD move · Mouse aim · Click shoot · R reload · Q/E, scroll or 1-4 weapons · G drop bomb · F hold to plant/defuse · Space jump · " + (navigator.keyboard?.lock ? "Ctrl/C crouch (fullscreen)" : "C crouch") + " · Shift walk · Tab scoreboard · Enter chat · Esc menu"}</p>
+        <p>${isTouchDevice() ? "Left thumb: move · Drag right side: aim · 🔫 shoot (drag to aim while shooting) · ⤒ jump · ⤓ crouch · ↻ reload · weapon bar to switch · skill/ultimate buttons · 💣 hold to plant/defuse · 💬 chat · ☰ menu" : "WASD move · Mouse aim · Click shoot · R reload · Q/E, scroll or 1-4 weapons · G drop weapon · Z skill · X ultimate · F hold to plant/defuse · Space jump · " + (navigator.keyboard?.lock ? "Ctrl/C crouch (fullscreen)" : "C crouch") + " · Shift walk · Tab scoreboard · Enter chat · Esc menu"}</p>
       </details>
       <button type="button" class="fps-back" data-back>← Back to games</button>
     </div>`);
@@ -106,12 +108,14 @@ function endScreen(msg) {
   const won = msg.winner === game?.team;
   const players = msg.players;
   sfx.result(won);
+  // Bomb mode: the winners' side is called out (match win/lose lines are for Team Deathmatch).
+  if (msg.side) setTimeout(() => announce(msg.side === "attack" ? "attackers-win" : "defenders-win"), 600);
   const view = el(`
     <div class="fps-end ${won ? "is-win" : "is-lose"}">
       <h1>${won ? "VICTORY" : "DEFEAT"}</h1>
       <p class="fps-end-score"><span class="is-red"></span> : <span class="is-blue"></span></p>
       <div class="fps-rewards"></div>
-      <table class="fps-table"><thead><tr><th>Player</th><th>K</th><th>D</th></tr></thead><tbody></tbody></table>
+      <table class="fps-table"><thead><tr><th>Player</th><th>K</th><th>D</th><th>A</th></tr></thead><tbody></tbody></table>
       <div class="fps-end-actions">
         <button type="button" class="fps-cta" data-again>Play again</button>
         <button type="button" class="fps-back" data-back>Back to games</button>
@@ -131,11 +135,12 @@ function endScreen(msg) {
     ...players
       .sort((a, b) => (a.team === b.team ? b.kills - a.kills : a.team === "red" ? -1 : 1))
       .map((p) => {
-        const tr = el(`<tr><td></td><td></td><td></td></tr>`);
+        const tr = el(`<tr><td></td><td></td><td></td><td></td></tr>`);
         tr.className = `is-${p.team}${p.id === game?.meId ? " is-me" : ""}`;
         tr.children[0].textContent = `${p.name}${p.bot ? " 🤖" : ""}`;
         tr.children[1].textContent = p.kills;
         tr.children[2].textContent = p.deaths;
+        tr.children[3].textContent = p.assists ?? 0;
         return tr;
       })
   );
@@ -159,8 +164,11 @@ function stopGame() {
   root?.classList.remove("is-playing");
 }
 
-function startGame(welcome) {
+async function startGame(welcome) {
   wantQueue = false;
+  // Custom 3D models (if any) finish loading first; a slow download never holds the match up.
+  if (!game) await modelsReady();
+  if (closing) return;
   // A reconnect or a repeated "queue" answers with the same match: keep the running game
   // instead of building a second renderer on top of it.
   if (game && game.roomId === welcome.room) {
@@ -248,6 +256,7 @@ async function open() {
   }
   root.hidden = false;
   closing = false;
+  loadModels();
   document.documentElement.classList.add("fps-active");
   window.dispatchEvent(new CustomEvent("fps:active", { detail: true }));
   lobby();

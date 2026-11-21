@@ -1,9 +1,11 @@
 import crypto from "node:crypto";
-import { step, createBody, eyeHeight, aimDirection, hitboxes, rayBox, rayWorld, lineOfSight, forwardOf, toCell, PLAYER } from "../../src/fps/shared/physics.js";
+import { step, createBody, eyeHeight, aimDirection, hitboxes, rayBox, rayWorld, lineOfSight, forwardOf, toCell, traceShot, smokeBetween, PLAYER } from "../../src/fps/shared/physics.js";
 import { WEAPONS, WEAPON_ORDER, GUNS, SPRAY_RECOVERY } from "../../src/fps/shared/weapons.js";
 import { MAPS, siteAt, isWalkable } from "../../src/fps/shared/maps.js";
 import { RULES, SIDES } from "../../src/fps/shared/rules.js";
-import { createBrain, think } from "./bot.js";
+import { createBrain, think, hearShot } from "./bot.js";
+import { Abilities, abilityState } from "./abilities.js";
+import { HEROES, HERO_IDS, PICK_SECONDS, heroById, ULT } from "../../src/fps/shared/heroes.js";
 
 // One authoritative 5v5 Bomb match. Humans send inputs and shots; bots fill the empty slots
 // (and take over for anyone who disconnects). Everything that matters is decided here.
@@ -27,11 +29,16 @@ const shuffle = (list, rng) => {
   return out;
 };
 const round2 = (v) => Math.round(v * 100) / 100;
+// View angles need finer steps than positions, or spectators see the camera tick.
+const round3 = (v) => Math.round(v * 1000) / 1000;
+const pt = (p) => [round2(p.x), round2(p.y), round2(p.z)];
 
 export class Room {
-  constructor({ mapId, humans = [], onEnd = () => {}, clock = () => Date.now(), rng = Math.random, autoTick = true }) {
+  constructor({ mapId, humans = [], onEnd = () => {}, clock = () => Date.now(), rng = Math.random, autoTick = true, heroPick = false }) {
     this.id = crypto.randomUUID();
-    this.map = MAPS[mapId];
+    // Each room gets its own blocks list (ability walls); the grid itself is shared and read-only.
+    this.map = { ...MAPS[mapId], blocks: [] };
+    this.abilities = new Abilities(this);
     this.clock = clock;
     this.rng = rng;
     this.onEnd = onEnd;
@@ -56,6 +63,8 @@ export class Room {
     }
 
     this.startRound();
+    if (heroPick) this.beginPick();
+    else this.assignHeroes();
     if (autoTick) {
       this.timer = setInterval(() => this.tick(), TICK_MS);
       this.timer.unref?.();
@@ -63,6 +72,7 @@ export class Room {
   }
 
   addPlayer({ userId = null, name, skin, team, bot, socket = null }) {
+    const pick = { hero: null, hover: null, locked: false, pickAt: 0, lockAt: 0 };
     const id = this.nextId++;
     this.players.set(id, {
       id,
@@ -82,21 +92,28 @@ export class Room {
       spray: 0,
       lastShotAt: 0,
       chatAt: 0,
+      roundKills: 0,
+      streak: 0,
+      lastKillAt: 0,
       using: false,
       ack: 0,
       simulatedMs: 0,
       clockStart: this.clock(),
       kills: 0,
       deaths: 0,
+      assists: 0,
+      damageFrom: new Map(),
       brain: bot ? createBrain(this.rng) : null,
+      ...pick,
+      abil: abilityState(),
+      lastKeys: 0,
     });
   }
 
   // ---------- sides and rounds ----------
 
-  sideOf(team) {
-    const firstHalf = this.round.n <= RULES.swapAfter;
-    const redAttacks = firstHalf;
+  sideOf(team, n = this.round.n) {
+    const redAttacks = Math.floor((Math.max(1, n) - 1) / RULES.swapAfter) % 2 === 0;
     return (team === "red") === redAttacks ? SIDES.ATTACK : SIDES.DEFEND;
   }
 
@@ -110,7 +127,12 @@ export class Room {
 
   startRound() {
     const now = this.clock();
+    const previous = this.round.n;
     this.round = { n: this.round.n + 1, phase: "buy", ends: now + RULES.buySec * 1000, winner: null, reason: null };
+    const swap = previous > 0 && this.sideOf("red", previous) !== this.sideOf("red");
+    this.ground = [];
+    this.groundId = 1;
+    this.clutch = { red: null, blue: null };
     for (const side of [SIDES.ATTACK, SIDES.DEFEND]) {
       const spawns = shuffle(this.map.spawns[side], this.rng);
       this.playersOn(side).forEach((p, i) => {
@@ -124,15 +146,24 @@ export class Room {
         p.reloadUntil = 0;
         p.spray = 0;
         p.using = false;
+        p.roundKills = 0;
+        p.body.dashT = 0;
+        p.damageFrom = new Map();
+        p.streak = 0;
+        p.lastKillAt = 0;
         if (p.brain) p.brain.reset?.();
       });
     }
     const attackers = this.playersOn(SIDES.ATTACK);
     const humans = attackers.filter((p) => !p.bot && p.socket);
-    const carrier = (humans.length ? humans : attackers)[Math.floor(this.rng() * (humans.length || attackers.length))];
+    const bots = attackers.filter((p) => !humans.includes(p));
+    const pool = humans.length && (!bots.length || this.rng() < RULES.humanCarrierChance) ? humans : bots;
+    const carrier = pool[Math.floor(this.rng() * pool.length)];
     this.bomb = { carrier: carrier.id, dropped: null, planted: null, plantStart: null, defuseStart: null, botSite: this.rng() < 0.5 ? "A" : "B", dropBy: null, dropUntil: 0, revealed: false };
     this.history = [];
-    this.broadcast({ t: "round", n: this.round.n, attack: this.teamOf(SIDES.ATTACK), score: this.score });
+    this.abilities.resetRound();
+    const matchPoint = Object.keys(this.score).filter((team) => this.score[team] === RULES.roundsToWin - 1);
+    this.broadcast({ t: "round", n: this.round.n, attack: this.teamOf(SIDES.ATTACK), score: this.score, swap, matchPoint });
   }
 
   endRound(winnerSide, reason) {
@@ -143,7 +174,9 @@ export class Room {
     this.round.winner = team;
     this.round.reason = reason;
     this.round.ends = this.clock() + RULES.endSec * 1000;
-    this.broadcast({ t: "round_end", winner: team, side: winnerSide, reason, score: this.score });
+    // A clutch: the last one standing against two or more, and the round still went their way.
+    const clutch = this.clutch[team];
+    this.broadcast({ t: "round_end", winner: team, side: winnerSide, reason, score: this.score, clutch: clutch && clutch.vs >= 2 ? clutch : null });
   }
 
   // ---------- simulation ----------
@@ -153,7 +186,8 @@ export class Room {
     const now = this.clock();
     const round = this.round;
 
-    if (round.phase === "buy" && now >= round.ends) {
+    if (round.phase === "pick") this.updatePick(now);
+    else if (round.phase === "buy" && now >= round.ends) {
       round.phase = "live";
       round.ends = now + RULES.roundSec * 1000;
       this.broadcast({ t: "live" });
@@ -168,14 +202,17 @@ export class Room {
       if (!p.alive || !(p.bot || !p.socket)) continue;
       // Bots, and humans who dropped out, are driven by the bot brain.
       p.brain ??= createBrain(this.rng);
-      if (!WEAPONS[p.weapon].gun) this.switchWeapon(p, "rifle", true);
+      this.armBot(p);
       const input = think(this, p, now);
-      step(this.map, p.body, input.keys, input.yaw, input.pitch, TICK_MS / 1000, { frozen: round.phase !== "live" });
+      step(this.map, p.body, input.keys, input.yaw, input.pitch, TICK_MS / 1000, this.moveOptions(p));
+      if (input.ability) this.abilities.use(p, input.ability.slot, { y: input.ability.y ?? input.yaw, p: input.ability.p ?? input.pitch });
       p.using = input.use;
       if (input.fire) this.fire(p, input.yaw, input.pitch, now);
       if (input.reload) this.startReload(p);
     }
 
+    this.updateGround(now);
+    this.abilities.tick(now, TICK_MS / 1000);
     if (round.phase === "live") this.updateBomb(now);
     this.recordHistory(now);
     this.spotted = this.computeVision();
@@ -206,6 +243,7 @@ export class Room {
           bomb.carrier = null;
           bomb.plantStart = null;
           this.holsterBomb(carrier);
+          carrier.abil.ult = Math.min(100, carrier.abil.ult + ULT.plant);
           this.round.ends = bomb.planted.explodeAt;
           // Defenders only learn that it was planted, not where.
           for (const p of this.players.values()) {
@@ -218,6 +256,7 @@ export class Room {
       if (defuser && (!bomb.defuseStart || bomb.defuseStart.id === defuser.id)) {
         bomb.defuseStart ??= { id: defuser.id, at: now };
         if (now - bomb.defuseStart.at >= RULES.defuseSec * 1000) {
+          defuser.abil.ult = Math.min(100, defuser.abil.ult + ULT.defuse);
           this.broadcast({ t: "defused", by: defuser.id });
           return this.endRound(SIDES.DEFEND, "defuse");
         }
@@ -237,6 +276,8 @@ export class Room {
 
   // Which enemies each team can currently see (range + field of view + clear line of sight).
   computeVision() {
+    const now = this.clock();
+    const smokes = this.abilities.smokes();
     const spotted = { red: [], blue: [] };
     const halfFov = ((RULES.visionFovDeg / 2) * Math.PI) / 180;
     const alive = [...this.players.values()].filter((p) => p.alive);
@@ -251,10 +292,14 @@ export class Room {
         if (dist > RULES.visionRange) return false;
         const f = forwardOf(viewer.body.yaw);
         if (dist > 1.5 && Math.acos(Math.max(-1, Math.min(1, (dx * f.x + dz * f.z) / dist))) > halfFov) return false;
+        // Stealth hides anyone not right next to you; smoke blocks sight.
+        if (now < enemy.abil.stealthUntil && dist > 4) return false;
         const eye = { x: viewer.body.x, y: eyeHeight(viewer.body), z: viewer.body.z };
+        if (smokeBetween(smokes, eye, chest) && smokeBetween(smokes, eye, head)) return false;
         return lineOfSight(this.map, eye, chest) || lineOfSight(this.map, eye, head);
       });
-      if (seen) spotted[enemy.team === "red" ? "blue" : "red"].push(enemy.id);
+      // Scans and sensors reveal through walls.
+      if (seen || now < enemy.abil.revealUntil) spotted[enemy.team === "red" ? "blue" : "red"].push(enemy.id);
     }
     return spotted;
   }
@@ -303,8 +348,24 @@ export class Room {
     if (p.simulatedMs + dtMs > now - p.clockStart + 250) return;
     p.simulatedMs += dtMs;
     p.ack = s;
+    p.lastKeys = k | 0;
     if (!p.alive) return;
-    step(this.map, p.body, k | 0, y, pitch, dtMs / 1000, { frozen: this.round.phase !== "live" });
+    step(this.map, p.body, k | 0, y, pitch, dtMs / 1000, this.moveOptions(p));
+  }
+
+  // Movement modifiers from weapon weight and abilities; the client predicts with the same values.
+  moveOptions(p) {
+    return {
+      frozen: this.round.phase !== "live",
+      speed: WEAPONS[p.weapon].speed * this.abilities.speedFactor(p),
+      jump: this.abilities.jumpFactor(p),
+      pads: this.abilities.padsFor(p),
+    };
+  }
+
+  useAbility(p, { slot, y, p: pitch }) {
+    if (slot !== "skill" && slot !== "ult") return;
+    this.abilities.use(p, slot, { y, p: pitch });
   }
 
   fire(p, yaw, pitch, viewTime = null) {
@@ -315,6 +376,7 @@ export class Room {
     if (weapon.melee) return this.slash(p, yaw, pitch, now, viewTime);
     if (!weapon.gun) return;
     const ammo = p.ammo[p.weapon];
+    if (!ammo) return;
     if (ammo.mag <= 0) return this.startReload(p);
 
     p.spray = Math.max(0, p.spray - (SPRAY_RECOVERY * (now - p.lastShotAt)) / 1000);
@@ -332,23 +394,30 @@ export class Room {
     p.lastShotAt = now;
 
     const rewindTo = Math.min(now, Math.max(now - RULES.maxRewindMs, viewTime ?? now));
-    let range = rayWorld(this.map, origin, dir, weapon.range);
-    let hit = null;
-    for (const target of this.players.values()) {
-      if (target === p || !target.alive || target.team === p.team) continue;
-      // Human shots are checked against where targets were on the shooter's screen; bots see the present.
-      const body = p.bot || !p.socket ? target.body : this.bodyAt(target, rewindTo);
-      for (const box of hitboxes(body)) {
-        const t = rayBox(origin, dir, box.min, box.max);
-        if (t !== null && t < range) {
-          range = t;
-          hit = { target, part: box.part };
+    // Human shots are checked against where targets were on the shooter's screen; bots see the present.
+    const bodies = [...this.players.values()]
+      .filter((target) => target !== p && target.alive && target.team !== p.team)
+      .map((target) => ({ target, body: p.bot || !p.socket ? target.body : this.bodyAt(target, rewindTo) }));
+    p.abil.stealthUntil = 0;
+    // Domes stop shots coming from outside; walls and barriers are part of the world ray.
+    const hitTest = (o, d, maxDist) => {
+      let best = this.abilities.domeHit(o, d, maxDist);
+      for (const { target, body } of bodies) {
+        for (const box of hitboxes(body)) {
+          const t = rayBox(o, d, box.min, box.max);
+          if (t !== null && t < (best?.t ?? maxDist)) best = { t, target, part: box.part };
         }
       }
-    }
-    const end = { x: origin.x + dir.x * range, y: origin.y + dir.y * range, z: origin.z + dir.z * range };
-    this.broadcast({ t: "shot", id: p.id, w: p.weapon, from: [round2(origin.x), round2(origin.y), round2(origin.z)], to: [round2(end.x), round2(end.y), round2(end.z)], hit: !!hit });
-    if (hit) this.damage(p, hit.target, Math.round(weapon.damage * weapon.multipliers[hit.part]), hit.part);
+      return best;
+    };
+    hearShot(this, p, now);
+    const shot = traceShot(this.map, origin, dir, { speed: weapon.velocity, range: weapon.range }, hitTest);
+    // Send a thinned path: enough for the client to draw the arc.
+    const path = shot.points.filter((_, i) => i % 4 === 0 || i === shot.points.length - 1).map(pt);
+    this.broadcast({ t: "shot", id: p.id, w: p.weapon, path, v: weapon.velocity, hit: !!shot.hit });
+    if (shot.hit?.dome) shot.hit.dome.hp -= weapon.damage;
+    else if (shot.hit) this.damage(p, shot.hit.target, Math.round(weapon.damage * weapon.multipliers[shot.hit.part]), shot.hit.part);
+    else this.abilities.hitBlockAt(shot.end, weapon.damage);
   }
 
   // Knife: short ray against hitboxes; hitting someone from behind is lethal.
@@ -372,6 +441,7 @@ export class Room {
         }
       }
     }
+    hearShot(this, p, now, 12);
     this.broadcast({ t: "slash", id: p.id, hit: !!hit });
     if (!hit) return;
     const facing = forwardOf(hit.target.body.yaw);
@@ -381,34 +451,134 @@ export class Room {
   }
 
   damage(attacker, victim, amount, part) {
+    if (!victim.alive) return;
+    const raw = amount;
+    amount = this.abilities.absorb(victim, amount);
+    this.abilities.onDamage(attacker, raw);
+    const dealt = Math.min(victim.hp, amount);
+    victim.damageFrom.set(attacker.id, (victim.damageFrom.get(attacker.id) ?? 0) + dealt);
     victim.hp = Math.max(0, victim.hp - amount);
     this.sendTo(attacker, { t: "hit", part, dmg: amount, kill: victim.hp === 0 });
     this.sendTo(victim, { t: "hurt", from: attacker.id, dmg: amount });
-    if (victim.brain) victim.brain.hurtBy = attacker.id;
+    if (victim.brain) {
+      victim.brain.hurtBy = attacker.id;
+      victim.brain.hurtAt = this.clock();
+    }
     if (victim.hp > 0) return;
+    const now = this.clock();
     victim.alive = false;
     victim.using = false;
+    victim.reloadUntil = 0;
     victim.deaths += 1;
     attacker.kills += 1;
+    attacker.roundKills += 1;
+    // Multi-kills count per round: 2 = double, 3 = triple, 4 = maniac, 5 = savage.
+    attacker.streak = attacker.roundKills;
+    attacker.lastKillAt = now;
     if (this.bomb.carrier === victim.id) {
       this.bomb.carrier = null;
       this.bomb.dropped = { x: victim.body.x, z: victim.body.z };
       this.bomb.dropBy = null;
     }
-    this.broadcast({ t: "kill", killer: attacker.id, victim: victim.id, head: part === "head", back: part === "back", w: attacker.weapon });
+    // The best gun falls where they died.
+    const gun = ["rifle", "pistol"].find((id) => victim.ammo[id]);
+    if (gun) this.addGround(gun, victim.ammo[gun], victim.body.x, victim.body.z);
+    victim.ammo = {};
+    // An ace is one player taking out the entire enemy team in a round.
+    const ace = attacker.roundKills >= [...this.players.values()].filter((q) => q.team === victim.team).length;
+    // Assists: the two teammates (other than the killer) who dealt the most damage to the victim.
+    const assists = [...victim.damageFrom]
+      .filter(([id, dmg]) => id !== attacker.id && dmg > 0 && this.players.get(id)?.team === attacker.team)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 2)
+      .map(([id]) => id);
+    for (const id of assists) this.players.get(id).assists += 1;
+    this.abilities.onKill(attacker, victim, assists);
+    victim.damageFrom = new Map();
+    this.broadcast({ t: "kill", killer: attacker.id, victim: victim.id, head: part === "head", back: part === "back", w: attacker.weapon, streak: attacker.streak, ace, assists });
+    const mates = [...this.players.values()].filter((q) => q.team === victim.team && q.alive);
+    const enemies = [...this.players.values()].filter((q) => q.team !== victim.team && q.alive);
+    if (mates.length === 1 && !this.clutch[victim.team]) this.clutch[victim.team] = { id: mates[0].id, vs: enemies.length };
+  }
+
+  // ---------- inventory ----------
+
+  owns(p, weapon) {
+    if (weapon === "knife") return true;
+    if (weapon === "bomb") return this.bomb.carrier === p.id;
+    return !!p.ammo[weapon];
+  }
+
+  bestWeapon(p) {
+    return ["rifle", "pistol"].find((id) => p.ammo[id] && p.ammo[id].mag + p.ammo[id].reserve > 0) ?? ["rifle", "pistol"].find((id) => p.ammo[id]) ?? "knife";
+  }
+
+  // Bots hold their best gun; they only fight with the knife when nothing else is left.
+  armBot(p) {
+    const best = this.bestWeapon(p);
+    if (p.weapon === "bomb" || !this.owns(p, p.weapon) || (p.weapon !== best && !p.reloadUntil)) this.switchWeapon(p, best, true);
+  }
+
+  addGround(weapon, ammo, x, z, lockBy = null) {
+    this.ground.push({ id: this.groundId++, w: weapon, mag: ammo.mag, reserve: ammo.reserve, x, z, lockBy, lockUntil: this.clock() + DROP_LOCK_MS });
+    if (this.ground.length > RULES.groundMax) this.ground.shift();
+  }
+
+  // Walking over a gun picks it up when that slot is empty (anyone can, on either team).
+  updateGround(now) {
+    if (!this.ground.length) return;
+    for (const p of this.players.values()) {
+      if (!p.alive) continue;
+      for (let i = 0; i < this.ground.length; i++) {
+        const g = this.ground[i];
+        const dist = Math.hypot(p.body.x - g.x, p.body.z - g.z);
+        // Whoever dropped it has to step away first, so standing on your own gun doesn't grab it back.
+        if (g.lockBy === p.id) {
+          if (dist > RULES.pickupRange + 0.8 && now >= g.lockUntil) g.lockBy = null;
+          continue;
+        }
+        if (p.ammo[g.w] || dist > RULES.pickupRange) continue;
+        p.ammo[g.w] = { mag: g.mag, reserve: g.reserve };
+        this.ground.splice(i, 1);
+        this.sendTo(p, { t: "pickup", w: g.w });
+        if (p.weapon === "knife" || !this.owns(p, p.weapon)) this.switchWeapon(p, g.w);
+        break;
+      }
+    }
+  }
+
+  // Throw a spot a short way ahead of the player, never through a wall.
+  throwSpot(p) {
+    const f = forwardOf(p.body.yaw);
+    const dist = Math.max(0, Math.min(1.6, rayWorld(this.map, { x: p.body.x, y: 0.4, z: p.body.z }, { x: f.x, y: 0, z: f.z }, 1.6) - 0.4));
+    const spot = { x: p.body.x + f.x * dist, z: p.body.z + f.z * dist };
+    return isWalkable(this.map, toCell(spot.x), toCell(spot.z)) ? spot : { x: p.body.x, z: p.body.z };
+  }
+
+  // G: drop whatever is in hand, except the knife.
+  dropWeapon(p) {
+    if (!p.alive || this.round.phase === "end") return;
+    if (p.weapon === "bomb") return this.dropBomb(p);
+    const ammo = p.ammo[p.weapon];
+    if (!WEAPONS[p.weapon].gun || !ammo) return;
+    const spot = this.throwSpot(p);
+    this.addGround(p.weapon, ammo, spot.x, spot.z, p.id);
+    delete p.ammo[p.weapon];
+    p.reloadUntil = 0;
+    this.switchWeapon(p, this.bestWeapon(p));
   }
 
   startReload(p) {
     const weapon = WEAPONS[p.weapon];
-    if (!weapon.gun) return;
     const ammo = p.ammo[p.weapon];
+    if (!weapon.gun || !ammo) return;
     if (!p.alive || p.reloadUntil || ammo.mag >= weapon.magazine || ammo.reserve <= 0) return;
     p.reloadUntil = this.clock() + weapon.reload * 1000;
   }
 
   completeReload(p) {
-    if (!WEAPONS[p.weapon].gun) return (p.reloadUntil = 0);
     const ammo = p.ammo[p.weapon];
+    if (!WEAPONS[p.weapon].gun || !ammo) return (p.reloadUntil = 0);
     const take = Math.min(WEAPONS[p.weapon].magazine - ammo.mag, ammo.reserve);
     ammo.mag += take;
     ammo.reserve -= take;
@@ -416,8 +586,7 @@ export class Room {
   }
 
   switchWeapon(p, weapon, instant = false) {
-    if (!Object.hasOwn(WEAPONS, weapon) || p.weapon === weapon || !p.alive) return;
-    if (weapon === "bomb" && this.bomb.carrier !== p.id) return;
+    if (!Object.hasOwn(WEAPONS, weapon) || p.weapon === weapon || !p.alive || !this.owns(p, weapon)) return;
     p.weapon = weapon;
     p.reloadUntil = 0;
     p.spray = 0;
@@ -425,17 +594,14 @@ export class Room {
   }
 
   holsterBomb(p) {
-    if (p?.weapon === "bomb") this.switchWeapon(p, "rifle");
+    if (p?.weapon === "bomb") this.switchWeapon(p, this.bestWeapon(p));
   }
 
   // Throw the bomb a short way ahead so a teammate can pick it up.
   dropBomb(p) {
     const bomb = this.bomb;
     if (!p.alive || bomb.carrier !== p.id || bomb.planted || this.round.phase === "end") return;
-    const f = forwardOf(p.body.yaw);
-    const dist = Math.max(0, Math.min(1.6, rayWorld(this.map, { x: p.body.x, y: 0.4, z: p.body.z }, { x: f.x, y: 0, z: f.z }, 1.6) - 0.4));
-    let spot = { x: p.body.x + f.x * dist, z: p.body.z + f.z * dist };
-    if (!isWalkable(this.map, toCell(spot.x), toCell(spot.z))) spot = { x: p.body.x, z: p.body.z };
+    const spot = this.throwSpot(p);
     bomb.carrier = null;
     bomb.dropped = spot;
     bomb.dropBy = p.id;
@@ -465,12 +631,184 @@ export class Room {
     for (const p of this.players.values()) if (p.socket?.readyState === 1) p.socket.send(data);
   }
 
-  roster() {
-    return [...this.players.values()].map((p) => ({ id: p.id, name: p.name, team: p.team, bot: p.bot, skin: p.skin, kills: p.kills, deaths: p.deaths }));
+  // ---------- hero select ----------
+  // Before round 1 every team picks heroes for up to PICK_SECONDS. A hero can be taken once per team.
+  // Bots pick on their own and give way when a human hovers or locks the hero they wanted.
+
+  teammates(team) {
+    return [...this.players.values()].filter((p) => p.team === team);
+  }
+
+  // Heroes a player can still take: not locked or hovered by a teammate.
+  freeHeroes(p, avoid = null) {
+    const taken = new Set();
+    for (const q of this.teammates(p.team)) {
+      if (q === p) continue;
+      if (q.locked) taken.add(q.hero);
+      else if (q.hover) taken.add(q.hover);
+    }
+    if (avoid) taken.add(avoid);
+    return HEROES.filter((h) => !taken.has(h.id));
+  }
+
+  // Bots fill roles the team doesn't have yet, otherwise anything free.
+  botChoice(p, avoid = null) {
+    const free = this.freeHeroes(p, avoid);
+    const roles = new Set(this.teammates(p.team).filter((q) => q !== p).map((q) => heroById(q.hero ?? q.hover)?.role).filter(Boolean));
+    const fresh = free.filter((h) => !roles.has(h.role));
+    const pool = fresh.length ? fresh : free;
+    return pool[Math.floor(this.rng() * pool.length)]?.id ?? null;
+  }
+
+  beginPick() {
+    const now = this.clock();
+    this.round.phase = "pick";
+    this.round.ends = now + PICK_SECONDS * 1000;
+    for (const p of this.players.values()) {
+      Object.assign(p, { hero: null, hover: null, locked: false });
+      if (p.bot) {
+        p.pickAt = now + 600 + this.rng() * 2500;
+        p.lockAt = p.pickAt + 1200 + this.rng() * 3500;
+      }
+    }
+    this.pickSentAt = 0;
+    this.sendPick();
+  }
+
+  updatePick(now) {
+    for (const p of this.players.values()) {
+      if (!p.bot || p.locked) continue;
+      if (!p.hover && now >= p.pickAt) {
+        p.hover = this.botChoice(p);
+        this.pickDirty = true;
+      }
+      if (p.hover && now >= p.lockAt && this.freeHeroes(p).some((h) => h.id === p.hover)) {
+        p.locked = true;
+        p.hero = p.hover;
+        this.pickDirty = true;
+      }
+    }
+    const everyone = [...this.players.values()];
+    // Everybody locked: a short moment to see the lineup, then go.
+    if (everyone.every((p) => p.locked) && !this.pickAllLocked) {
+      this.pickAllLocked = true;
+      this.round.ends = Math.min(this.round.ends, now + 1500);
+      this.pickDirty = true;
+    }
+    if (now >= this.round.ends) return this.finishPick(now);
+    if (this.pickDirty || now - this.pickSentAt > 1000) this.sendPick();
+  }
+
+  // A human wants this hero: bot teammates hovering or holding it switch to something else.
+  botsYield(p, heroId) {
+    const now = this.clock();
+    for (const q of this.teammates(p.team)) {
+      if (q === p || !q.bot || (q.hover !== heroId && q.hero !== heroId)) continue;
+      q.locked = false;
+      q.hero = null;
+      q.hover = this.botChoice(q, heroId);
+      q.lockAt = now + 800 + this.rng() * 1500;
+    }
+  }
+
+  heroAction(p, { action, id }) {
+    if (this.round.phase !== "pick" || p.bot) return;
+    const takenByHuman = (heroId) => this.teammates(p.team).some((q) => q !== p && !q.bot && q.locked && q.hero === heroId);
+    if (action === "unlock") {
+      p.locked = false;
+      p.hero = null;
+    } else if (action === "hover" || action === "lock") {
+      const heroId = id ?? p.hover;
+      if (!HERO_IDS.includes(heroId) || takenByHuman(heroId)) return;
+      if (p.locked && action === "hover") return;
+      p.hover = heroId;
+      if (action === "lock") {
+        p.locked = true;
+        p.hero = heroId;
+      }
+      this.botsYield(p, heroId);
+    } else return;
+    this.pickAllLocked = false;
+    this.pickDirty = true;
+    this.sendPick();
+  }
+
+  finishPick(now) {
+    for (const team of ["red", "blue"]) {
+      for (const p of this.teammates(team)) {
+        if (p.locked) continue;
+        const free = this.freeHeroes(p).map((h) => h.id);
+        p.hero = free.includes(p.hover) ? p.hover : free[Math.floor(this.rng() * free.length)];
+        p.hover = p.hero;
+        p.locked = true;
+      }
+    }
+    this.round.phase = "buy";
+    this.round.ends = now + RULES.buySec * 1000;
+    this.broadcast({ t: "pick_done", players: this.roster() });
+    this.broadcast({ t: "round", n: this.round.n, attack: this.teamOf(SIDES.ATTACK), score: this.score, swap: false, matchPoint: [] });
+  }
+
+  // Each team only ever sees its own picks.
+  sendPick() {
+    this.pickSentAt = this.clock();
+    this.pickDirty = false;
+    for (const team of ["red", "blue"]) {
+      const message = {
+        t: "pick",
+        ends: this.round.ends,
+        team: this.teammates(team).map((q) => ({ id: q.id, name: q.name, bot: q.bot, hover: q.hover, hero: q.hero, locked: q.locked })),
+      };
+      for (const q of this.teammates(team)) this.sendTo(q, message);
+    }
+  }
+
+  // Without a pick phase (tests, quick matches) everyone gets a random distinct hero.
+  assignHeroes() {
+    for (const team of ["red", "blue"]) {
+      const ids = shuffle(HERO_IDS, this.rng);
+      this.teammates(team).forEach((p, i) => Object.assign(p, { hero: ids[i % ids.length], hover: ids[i % ids.length], locked: true }));
+    }
+  }
+
+  roster(forTeam = null) {
+    const hidden = this.round.phase === "pick";
+    return [...this.players.values()].map((p) => ({
+      id: p.id,
+      name: p.name,
+      team: p.team,
+      bot: p.bot,
+      skin: p.skin,
+      kills: p.kills,
+      deaths: p.deaths,
+      assists: p.assists,
+      // Enemy heroes stay secret until the pick is over.
+      hero: hidden && p.team !== forTeam ? null : p.hero,
+    }));
   }
 
   welcome(p) {
-    return { t: "welcome", room: this.id, you: p.id, team: p.team, map: this.map.id, players: this.roster(), score: this.score, round: this.round.n };
+    const welcome = { t: "welcome", room: this.id, you: p.id, team: p.team, map: this.map.id, players: this.roster(p.team), score: this.score, round: this.round.n, phase: this.round.phase };
+    if (this.round.phase === "pick") setTimeout(() => this.sendPick(), 0);
+    return welcome;
+  }
+
+  // 1 stealthed, 2 revealed to the viewer's team (scan/sensor), 4 shielded.
+  statusFlags(p, viewer, now) {
+    const a = p.abil;
+    let flags = now < a.stealthUntil ? 1 : 0;
+    if (p.team !== viewer.team && now < a.revealUntil) flags |= 2;
+    if (a.shield > 0 && now < a.shieldUntil) flags |= 4;
+    return flags;
+  }
+
+  // What a player is busy with, for animations: 1 reloading, 2 planting, 4 defusing.
+  // Defenders never learn that someone is planting.
+  actionFlags(p, attackerView) {
+    let flags = p.reloadUntil ? 1 : 0;
+    if (attackerView && this.bomb.plantStart && this.bomb.carrier === p.id) flags |= 2;
+    if (this.bomb.defuseStart?.id === p.id) flags |= 4;
+    return flags;
   }
 
   sendSnapshots(now) {
@@ -503,14 +841,16 @@ export class Room {
       },
     };
     const attackTeam = this.teamOf(SIDES.ATTACK);
+    const ground = this.ground.map((g) => [g.id, WEAPON_ORDER.indexOf(g.w), round2(g.x), round2(g.z)]);
     const players = [...this.players.values()];
     if (players.some((p) => p.socket?.readyState === 1)) this.lastHumanAt = now;
     for (const me of players) {
       if (!me.socket || me.socket.readyState !== 1) continue;
       const ps = players
         .filter((p) => p !== me)
-        .map((p) => [p.id, round2(p.body.x), round2(p.body.y), round2(p.body.z), round2(p.body.yaw), round2(p.body.pitch), p.body.crouch ? 1 : 0, p.alive ? 1 : 0, p.team === me.team ? p.hp : -1, WEAPON_ORDER.indexOf(p.weapon)]);
+        .map((p) => [p.id, round2(p.body.x), round2(p.body.y), round2(p.body.z), round3(p.body.yaw), round3(p.body.pitch), p.body.crouch ? 1 : 0, p.alive ? 1 : 0, p.team === me.team ? p.hp : -1, WEAPON_ORDER.indexOf(p.weapon), this.actionFlags(p, me.team === attackTeam), this.statusFlags(p, me, now)]);
       const ammo = me.ammo[me.weapon] ?? NO_AMMO;
+      const inv = WEAPON_ORDER.filter((id) => this.owns(me, id));
       const shared = me.team === attackTeam ? attackView : defendView;
       me.socket.send(
         JSON.stringify({
@@ -529,13 +869,16 @@ export class Room {
             hp: me.hp,
             alive: me.alive,
             w: me.weapon,
-            ammo: GUNS.map((id) => [me.ammo[id].mag, me.ammo[id].reserve]),
+            inv,
+            ammo: GUNS.map((id) => (me.ammo[id] ? [me.ammo[id].mag, me.ammo[id].reserve] : null)),
             mag: ammo.mag,
             res: ammo.reserve,
             rl: me.reloadUntil ? me.reloadUntil - now : 0,
           },
           ps,
           seen: this.spotted?.[me.team] ?? [],
+          ...this.abilities.snapshotFor(me, now),
+          ground,
           ...shared,
         })
       );
@@ -572,10 +915,10 @@ export class Room {
     clearInterval(this.timer);
     const results = [...this.players.values()]
       .filter((p) => !p.bot && p.userId)
-      .map((p) => ({ userId: p.userId, team: p.team, won: p.team === winner, kills: p.kills, deaths: p.deaths }));
+      .map((p) => ({ userId: p.userId, team: p.team, won: p.team === winner, kills: p.kills, deaths: p.deaths, assists: p.assists }));
     const rewards = this.onEnd(this, { winner, results }) ?? {};
     for (const p of this.players.values()) {
-      this.sendTo(p, { t: "match_end", winner, score: this.score, players: this.roster(), reward: rewards[p.userId] ?? null });
+      this.sendTo(p, { t: "match_end", winner, side: this.sideOf(winner), score: this.score, players: this.roster(), reward: rewards[p.userId] ?? null });
     }
   }
 

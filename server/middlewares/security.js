@@ -10,7 +10,8 @@ export const securityHeaders = helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com/gsi/style"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "blob:"],
-      connectSrc: ["'self'", "https://accounts.google.com/gsi/"],
+      // data:/blob: let 3D model files carry embedded buffers and textures.
+      connectSrc: ["'self'", "data:", "blob:", "https://accounts.google.com/gsi/"],
       frameSrc: ["https://accounts.google.com/gsi/"],
       mediaSrc: ["'self'"],
       objectSrc: ["'none'"],

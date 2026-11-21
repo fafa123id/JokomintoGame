@@ -1,4 +1,4 @@
-import { isMuted } from "./sound.js";
+import { isMuted, getVolume } from "./sound.js";
 import { state, refreshPet } from "./api.js";
 import { setExpression } from "./pet.js";
 const TOAST_LIMIT = 3;
@@ -59,6 +59,7 @@ function playSoundEffect(soundId) {
   const soundEffect = document.getElementById(soundId);
 
   if (!soundEffect) return;
+  soundEffect.volume = getVolume("effects");
 
   // Ticks play on their own element so they never cut off (or get cut by) feedback sounds.
   if (soundId === "tick") {

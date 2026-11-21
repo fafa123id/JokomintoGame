@@ -1,4 +1,4 @@
-import { isMuted } from "./sound.js";
+import { isMuted, getVolume } from "./sound.js";
 
 const DIR = "/asset/music";
 const PLAYLISTS = {
@@ -45,8 +45,9 @@ function nextTrack(name) {
   return order[name].shift();
 }
 
-function fadeTo(volume, done) {
+function fadeTo(level, done) {
   clearInterval(fadeTimer);
+  const volume = level * getVolume("music");
   const step = (volume - player.volume) / (FADE_MS / 50);
   if (!step) return done?.();
   fadeTimer = setInterval(() => {
@@ -120,7 +121,7 @@ export function initMusic() {
     setTimeout(() => switchScene(sceneFor(e.detail)), 60);
   });
 
-  window.addEventListener("sound:change", () => (isMuted() ? player.pause() : resume()));
+  window.addEventListener("sound:change", () => (isMuted() ? player.pause() : player.paused ? resume() : fadeTo(target)));
   window.addEventListener("fps:active", (e) => {
     suspended = e.detail;
     if (suspended) player.pause();

@@ -1,8 +1,9 @@
 // Bomb mode rules shared by server, bots and HUD.
 export const RULES = {
   teamSize: 5,
-  roundsToWin: 5,
-  swapAfter: 4,
+  roundsToWin: 10,
+  // Sides swap every swapAfter rounds.
+  swapAfter: 5,
   tickRate: 20,
   buySec: 6,
   roundSec: 100,
@@ -19,6 +20,9 @@ export const RULES = {
   visionRange: 30,
   visionFovDeg: 110,
   maxRewindMs: 300,
+  // Chance a human attacker (rather than a bot) starts with the bomb.
+  humanCarrierChance: 0.6,
+  groundMax: 16,
 };
 
 export const TEAMS = ["red", "blue"];

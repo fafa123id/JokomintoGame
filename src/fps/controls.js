@@ -8,7 +8,7 @@ const STICK_RADIUS = 60;
 
 export const isTouchDevice = () => matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 1;
 
-export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onChat, onScoreboard, onLockChange, onPrimary, onWheel, onSpectate }) {
+export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onChat, onScoreboard, onLockChange, onPrimary, onWheel, onSpectate, onAbility }) {
   const state = { yaw: 0, pitch: 0, keys: 0, fire: false, use: false, locked: false, typing: false };
   const pressed = new Set();
   const touch = isTouchDevice();
@@ -57,7 +57,7 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
     };
     // Buttons and the chat box handle their own clicks; anywhere else captures the mouse.
     on(root, "click", (e) => {
-      if (e.target.closest("button, input, form, .fps-pause-card, .fps-chat")) return;
+      if (e.target.closest("button, input, form, .fps-pause-card, .fps-chat, .fps-pick")) return;
       requestLock();
     });
     on(document, "fullscreenchange", () => {
@@ -110,6 +110,8 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
       if (e.code === "KeyQ") onCycle?.(-1);
       if (e.code === "KeyE") onCycle?.(1);
       if (e.code === "KeyG") onDrop?.();
+      if (e.code === "KeyZ") onAbility?.("skill");
+      if (e.code === "KeyX") onAbility?.("ult");
       if (e.code === "KeyF") state.use = true;
       if (keyMap[e.code]) {
         e.preventDefault();
@@ -133,6 +135,8 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
       <button type="button" class="fps-btn fps-btn--jump" data-hold="${KEY.JUMP}" aria-label="Jump">⤒</button>
       <button type="button" class="fps-btn fps-btn--crouch" data-toggle="${KEY.CROUCH}" aria-label="Crouch">⤓</button>
       <button type="button" class="fps-btn fps-btn--reload" data-reload aria-label="Reload">↻</button>
+      <button type="button" class="fps-btn fps-btn--skill" data-ability="skill" aria-label="Skill"><span data-ability-icon="skill"></span><i data-ability-cd="skill"></i></button>
+      <button type="button" class="fps-btn fps-btn--ult" data-ability="ult" aria-label="Ultimate"><span data-ability-icon="ult"></span><i data-ability-cd="ult"></i></button>
       <button type="button" class="fps-btn fps-btn--use" data-use aria-label="Plant or defuse">💣</button>
       <button type="button" class="fps-btn fps-btn--score" data-score aria-label="Scoreboard">☰</button>
       <div class="fps-spec-bar">
@@ -178,6 +182,7 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
           target.classList.toggle("is-on", !!(touchKeys & Number(target.dataset.toggle)));
           recompute();
         } else if (target?.dataset.reload !== undefined) onReload?.();
+        else if (target?.dataset.ability) onAbility?.(target.dataset.ability);
         else if (target?.dataset.use !== undefined) state.use = true;
         else if (target?.dataset.score !== undefined) onScoreboard?.(true);
         else if (target?.dataset.spec) onSpectate?.(target.dataset.spec);

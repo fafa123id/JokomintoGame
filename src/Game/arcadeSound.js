@@ -1,4 +1,4 @@
-import { isMuted } from "../sound.js";
+import { isMuted, getVolume } from "../sound.js";
 
 // Card and dance sounds synthesized with Web Audio: no asset files, tiny CPU cost.
 let ctx = null;
@@ -12,7 +12,7 @@ function audio() {
   if (!ctx) {
     ctx = new Ctx();
     master = ctx.createGain();
-    master.gain.value = 0.6;
+    master.gain.value = 0.6 * getVolume("effects");
     master.connect(ctx.destination);
     const length = Math.floor(ctx.sampleRate * 0.3);
     noise = ctx.createBuffer(1, length, ctx.sampleRate);
@@ -20,6 +20,7 @@ function audio() {
     for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
   }
   if (ctx.state === "suspended") ctx.resume();
+  master.gain.value = 0.6 * getVolume("effects");
   return ctx;
 }
 

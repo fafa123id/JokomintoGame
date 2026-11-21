@@ -1,4 +1,4 @@
-import { isMuted } from "../sound.js";
+import { isMuted, getVolume } from "../sound.js";
 
 // Soft pencil and marimba sounds for tic-tac-toe, synthesized with Web Audio.
 let ctx = null;
@@ -12,7 +12,7 @@ function audio() {
   if (!ctx) {
     ctx = new Ctx();
     master = ctx.createGain();
-    master.gain.value = 0.55;
+    master.gain.value = 0.55 * getVolume("effects");
     master.connect(ctx.destination);
     const length = Math.floor(ctx.sampleRate * 0.4);
     grain = ctx.createBuffer(1, length, ctx.sampleRate);
@@ -20,6 +20,7 @@ function audio() {
     for (let i = 0; i < length; i++) data[i] = Math.random() * 2 - 1;
   }
   if (ctx.state === "suspended") ctx.resume();
+  master.gain.value = 0.55 * getVolume("effects");
   return ctx;
 }
 

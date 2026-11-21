@@ -7,14 +7,16 @@ const CHAT_FADE_MS = 9000;
 
 export function createHud(root, { touch, ctrlCrouch = false }) {
   const crouchKey = ctrlCrouch ? "Ctrl/C crouch" : "C crouch";
-  const help = `WASD move · Mouse aim · Click shoot · R reload · Q/E/scroll or 1-4 weapons · G drop bomb · F plant/defuse · Space jump · ${crouchKey} · Shift walk · Tab scores · Enter chat · Esc menu`;
+  const help = `WASD move · Mouse aim · Click shoot · R reload · Q/E/scroll or 1-4 weapons · G drop weapon · Z skill · X ultimate · F plant/defuse · Space jump · ${crouchKey} · Shift walk · Tab scores · Enter chat · Esc menu`;
   const hud = document.createElement("div");
   hud.className = "fps-hud";
   hud.innerHTML = `
     <div class="fps-top">
+      <div class="fps-roster fps-roster--red" data-roster-red></div>
       <div class="fps-team fps-team--red"><small data-side-red></small><strong data-score-red>0</strong></div>
       <div class="fps-clock"><strong data-clock>0:00</strong><span class="fps-bombicon" data-bombicon>💣</span><small data-phase></small></div>
       <div class="fps-team fps-team--blue"><strong data-score-blue>0</strong><small data-side-blue></small></div>
+      <div class="fps-roster fps-roster--blue" data-roster-blue></div>
     </div>
     <button type="button" class="fps-leave" data-menu-btn>☰ Menu</button>
     <button type="button" class="fps-chatbtn" data-chat-btn aria-label="Chat">💬</button>
@@ -23,9 +25,14 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
     <div class="fps-hitmarker" data-hitmarker><i></i><i></i><i></i><i></i></div>
     <div class="fps-vignette" data-vignette></div>
     <div class="fps-banner" data-banner><strong></strong><small></small></div>
+    <div class="fps-callout" data-callout><strong></strong><small></small></div>
     <div class="fps-prompt" data-prompt><span></span><div class="fps-progress"><div></div></div></div>
     <div class="fps-bombtag" data-bombtag></div>
-    <div class="fps-health"><span data-hp>100</span><div class="fps-bar"><div data-hpbar></div></div></div>
+    <div class="fps-health"><span data-hp>100</span><em class="fps-shield" data-shield></em><div class="fps-bar"><div data-hpbar></div></div></div>
+    <div class="fps-abilities" data-abilities>
+      <div class="fps-ability" data-ab="skill"><span></span><i></i><b>Z</b><small></small></div>
+      <div class="fps-ability fps-ability--ult" data-ab="ult"><span></span><i></i><b>X</b><small></small></div>
+    </div>
     <div class="fps-slots" data-slots></div>
     <div class="fps-ammo"><small data-weapon></small><strong data-ammo-count><span data-mag>25</span><em>/ <span data-reserve>75</span></em></strong><div class="fps-bar fps-bar--reload"><div data-reloadbar></div></div></div>
     <div class="fps-chat" data-chat>
@@ -41,7 +48,7 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       <span class="fps-spec-name" data-spectate></span>
       <small class="fps-spec-help" data-spec-help></small>
     </div>
-    <div class="fps-board" data-board><table><thead><tr><th>Player</th><th>K</th><th>D</th></tr></thead><tbody></tbody></table></div>
+    <div class="fps-board" data-board><table><thead><tr><th>Player</th><th>K</th><th>D</th><th>A</th></tr></thead><tbody></tbody></table></div>
     <div class="fps-pause" data-pause>
       <div class="fps-pause-card">
         <div data-pause-main>
@@ -65,6 +72,27 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
   let bannerTimer = null;
   let hitTimer = null;
   let blinkTimer = null;
+  let calloutTimer = null;
+  const portraits = new Map();
+  const callouts = [];
+  let showing = null;
+  const CALLOUT_MIN_MS = 1200;
+  const showCallout = () => {
+    const b = $("callout");
+    const item = callouts.shift();
+    if (!item) {
+      showing = null;
+      return b.classList.remove("is-on");
+    }
+    showing = { ...item, at: performance.now() };
+    b.querySelector("strong").textContent = item.title;
+    b.querySelector("small").textContent = item.subtitle;
+    b.className = "fps-callout";
+    void b.offsetWidth;
+    b.className = `fps-callout is-on ${item.tone}`;
+    clearTimeout(calloutTimer);
+    calloutTimer = setTimeout(showCallout, callouts.length ? CALLOUT_MIN_MS : item.ms);
+  };
   let slotsKey = "";
   const handlers = {};
 
@@ -152,6 +180,41 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       while (log.childElementCount > CHAT_LINES) log.firstElementChild.remove();
       setTimeout(() => row.classList.add("is-old"), CHAT_FADE_MS);
     },
+    // Portraits beside the score: lit while alive, dimmed and crossed out when dead, YOU under yours.
+    roster(entries) {
+      for (const e of entries) {
+        let item = portraits.get(e.id);
+        if (!item || item.dataset.icon !== e.icon) {
+          item?.remove();
+          item = document.createElement("div");
+          item.className = "fps-portrait";
+          item.dataset.icon = e.icon;
+          const face = document.createElement("span");
+          face.textContent = e.icon;
+          item.appendChild(face);
+          if (e.me) {
+            const you = document.createElement("small");
+            you.textContent = "YOU";
+            item.appendChild(you);
+          }
+          item.title = e.name;
+          portraits.set(e.id, item);
+          const list = $(`roster-${e.team}`);
+          // Your own portrait sits next to the score.
+          if (e.me && e.team === "red") list.appendChild(item);
+          else if (e.me) list.prepend(item);
+          else if (e.team === "red") list.prepend(item);
+          else list.appendChild(item);
+        }
+        item.classList.toggle("is-dead", !e.alive);
+        item.classList.toggle("is-me", e.me);
+        item.classList.toggle("is-red", e.team === "red");
+        item.classList.toggle("is-blue", e.team === "blue");
+        // Health bars only for your own team (the server hides enemy health).
+        item.classList.toggle("no-hp", e.hp === undefined);
+        if (e.hp !== undefined) item.style.setProperty("--hp", `${Math.max(0, e.hp)}%`);
+      }
+    },
     score({ red, blue }, attackTeam) {
       $("score-red").textContent = red;
       $("score-blue").textContent = blue;
@@ -172,6 +235,36 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       clearTimeout(blinkTimer);
       blinkTimer = setTimeout(() => icon.classList.remove("is-lit"), 130);
     },
+    // Skill cooldown and ultimate charge, on the HUD (desktop) and on the touch buttons.
+    abilities({ hero, cd, ult, stealth }) {
+      if (!hero) return;
+      const skillReady = cd <= 0;
+      const ultReady = ult >= 100;
+      const set = (slot, icon, ready, label, fill, title) => {
+        const box = hud.querySelector(`[data-ab="${slot}"]`);
+        if (box.dataset.icon !== icon) {
+          box.dataset.icon = icon;
+          box.querySelector("span").textContent = icon;
+          box.title = title;
+        }
+        box.classList.toggle("is-ready", ready);
+        box.querySelector("small").textContent = label;
+        box.style.setProperty("--fill", `${Math.round(fill * 100)}%`);
+        const btn = root.querySelector(`[data-ability="${slot}"]`);
+        if (btn) {
+          btn.classList.toggle("is-ready", ready);
+          btn.querySelector("[data-ability-icon]").textContent = icon;
+          btn.querySelector("[data-ability-cd]").textContent = ready ? "" : label;
+          btn.style.setProperty("--fill", `${Math.round(fill * 100)}%`);
+        }
+      };
+      set("skill", hero.skill.icon, skillReady, skillReady ? "" : `${Math.ceil(cd / 1000)}`, skillReady ? 1 : 1 - cd / (hero.skill.cooldown * 1000), `${hero.skill.name}: ${hero.skill.desc}`);
+      set("ult", hero.ult.icon, ultReady, ultReady ? "READY" : `${ult}%`, ult / 100, `${hero.ult.name}: ${hero.ult.desc}`);
+      hud.classList.toggle("is-stealth", stealth > 0);
+    },
+    shield(amount) {
+      $("shield").textContent = amount > 0 ? `+${amount}🛡` : "";
+    },
     vitals({ hp, weapon, mag, reserve, reloadProgress }) {
       const w = WEAPONS[weapon];
       $("hp").textContent = hp;
@@ -184,9 +277,9 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       $("mag").classList.toggle("is-low", !!w?.gun && mag <= Math.ceil(w.magazine * 0.2));
       $("reloadbar").style.width = reloadProgress !== null ? `${Math.round(reloadProgress * 100)}%` : "0%";
     },
-    // slots: [{id, ammo}] in order; current: weapon id; carrier: can drop the bomb
-    slots(list, current, carrier) {
-      const key = `${list.map((s) => s.id).join()}|${current}|${carrier}`;
+    // slots: [{id}] in order; current: weapon id; canDrop: what's in hand can be thrown (not the knife)
+    slots(list, current, canDrop) {
+      const key = `${list.map((s) => s.id).join()}|${current}|${canDrop}`;
       if (key === slotsKey) return;
       slotsKey = key;
       const el = $("slots");
@@ -204,12 +297,12 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
           return b;
         })
       );
-      if (carrier) {
+      if (canDrop) {
         const drop = document.createElement("button");
         drop.type = "button";
         drop.dataset.drop = "";
         drop.className = "fps-slot fps-slot--drop";
-        drop.textContent = touch ? "Drop 💣" : "G drop 💣";
+        drop.textContent = `${touch ? "Drop" : "G drop"} ${SLOT_ICONS[current] ?? ""}`;
         el.appendChild(drop);
       }
     },
@@ -242,7 +335,17 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       clearTimeout(bannerTimer);
       bannerTimer = setTimeout(() => b.classList.remove("is-on"), ms);
     },
-    kill(killer, victim, { head, back, weapon, mine, me }) {
+    // Second banner line for streaks, aces, clutches and match point, so it never hides the round banner.
+    // Callouts queue up: SAVAGE, then ACE, then CLUTCH each get their moment instead of overwriting.
+    callout(title, subtitle = "", tone = "", ms = 2200) {
+      callouts.push({ title, subtitle, tone, ms });
+      if (!showing) return showCallout();
+      // Something is waiting: let the current one finish its minimum time, then move on.
+      const left = Math.max(0, CALLOUT_MIN_MS - (performance.now() - showing.at));
+      clearTimeout(calloutTimer);
+      calloutTimer = setTimeout(showCallout, left);
+    },
+    kill(killer, victim, { head, back, weapon, mine, me, helpers = [], assisted = false }) {
       const row = document.createElement("div");
       row.className = `fps-feed-row${mine ? " is-mine" : ""}${me ? " is-me" : ""}`;
       const k = document.createElement("span");
@@ -253,7 +356,15 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       const v = document.createElement("span");
       v.className = `is-${victim.team}`;
       v.textContent = victim.name;
-      row.append(k, icon, v);
+      row.append(k);
+      if (helpers.length) {
+        const help = document.createElement("small");
+        help.className = "fps-feed-assist";
+        help.textContent = `+ ${helpers.map((h) => h.name).join(", ")}`;
+        row.append(help);
+      }
+      if (assisted) row.classList.add("is-mine");
+      row.append(icon, v);
       feed.prepend(row);
       while (feed.childElementCount > 5) feed.lastElementChild.remove();
       setTimeout(() => row.remove(), 6000);
@@ -300,7 +411,7 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
           .map((p) => {
             const tr = document.createElement("tr");
             tr.className = `is-${p.team}${p.id === meId ? " is-me" : ""}`;
-            for (const value of [`${p.name}${p.bot ? " 🤖" : ""}`, p.kills, p.deaths]) {
+            for (const value of [`${p.name}${p.bot ? " 🤖" : ""}`, p.kills, p.deaths, p.assists ?? 0]) {
               const td = document.createElement("td");
               td.textContent = value;
               tr.appendChild(td);
@@ -313,6 +424,7 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       clearTimeout(bannerTimer);
       clearTimeout(hitTimer);
       clearTimeout(blinkTimer);
+      clearTimeout(calloutTimer);
       hud.remove();
     },
   };

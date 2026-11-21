@@ -85,6 +85,7 @@ function startMatch(entries) {
   const room = new Room({
     mapId,
     humans,
+    heroPick: true,
     onEnd: (r, result) => {
       const rewards = rewardsFor(r, result);
       setTimeout(() => closeRoom(r), 1000).unref?.();
@@ -186,8 +187,10 @@ export function connect(ws, user) {
     else if (msg.t === "reload") room.startReload(player);
     else if (msg.t === "switch") room.switchWeapon(player, msg.w);
     else if (msg.t === "use") player.using = !!msg.on;
-    else if (msg.t === "drop") room.dropBomb(player);
+    else if (msg.t === "drop") room.dropWeapon(player);
     else if (msg.t === "chat") room.chat(player, msg);
+    else if (msg.t === "hero") room.heroAction(player, msg);
+    else if (msg.t === "ability") room.useAbility(player, msg);
   });
 
   ws.on("close", () => {
