@@ -155,6 +155,7 @@ export const machine = createMachine({
         window.leaveMemory?.();
         window.leaveSimon?.();
         window.leaveVersus?.();
+        window.leaveFps?.();
     },
     increaseHunger: () => updateContext(),
     increaseMood: () => updateContext(),

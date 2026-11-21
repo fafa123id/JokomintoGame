@@ -225,6 +225,36 @@ const MOOD_POSE = {
   sleep: { ears: 0.5, tilt: 0.09, breathAmp: 0.035, breathHz: 0.16, idleEvery: [8, 14], actions: ["earTwitch"] },
 };
 
+// Every Joko on screen shares ONE WebGL context: a pet renders into this offscreen renderer and copies
+// the frame into its own 2D canvas. Creating and destroying a context per pet on each screen change
+// made some phones kill the GPU process (the whole tab closes), so the context now lives for the page.
+let shared = null;
+
+function sharedRenderer() {
+  if (shared) return shared;
+  const canvas = document.createElement("canvas");
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
+  renderer.setPixelRatio(1);
+  renderer.setClearColor(0x000000, 0);
+  canvas.addEventListener("webglcontextlost", (e) => {
+    e.preventDefault();
+    shared = null;
+  });
+  shared = { renderer, width: 0, height: 0 };
+  return shared;
+}
+
+function disposeScene(scene) {
+  scene.traverse((o) => {
+    o.geometry?.dispose();
+    for (const m of [].concat(o.material ?? [])) {
+      m.map?.dispose();
+      for (const u of Object.values(m.uniforms ?? {})) if (u?.value?.isTexture) u.value.dispose();
+      m.dispose();
+    }
+  });
+}
+
 export class Pet3D {
   constructor(sprite, { fx = false, detail = 1 } = {}) {
     this.sprite = sprite;
@@ -245,8 +275,7 @@ export class Pet3D {
     sprite.appendChild(this.canvas);
 
     this.pixelRatio = pixelRatio();
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true });
-    this.renderer.setPixelRatio(this.pixelRatio);
+    this.ctx2d = this.canvas.getContext("2d");
     this.scene = new THREE.Scene();
 
     const viewHeight = VIEW.h * UNIT;
@@ -407,11 +436,28 @@ export class Pet3D {
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     if (!width || !height) return false;
-    if (this.canvas.width !== Math.round(width * this.pixelRatio) || this.canvas.height !== Math.round(height * this.pixelRatio)) {
-      this.renderer.setSize(width, height, false);
+    const w = Math.round(width * this.pixelRatio);
+    const h = Math.round(height * this.pixelRatio);
+    if (this.canvas.width !== w || this.canvas.height !== h) {
+      this.canvas.width = w;
+      this.canvas.height = h;
       if (this.desiredTexScale() !== this.texScale) this.compose();
     }
     return true;
+  }
+
+  // Renders through the shared context and copies the frame into this pet's canvas.
+  draw() {
+    const s = sharedRenderer();
+    const { width, height } = this.canvas;
+    if (s.width !== width || s.height !== height) {
+      s.renderer.setSize(width, height, false);
+      s.width = width;
+      s.height = height;
+    }
+    s.renderer.render(this.scene, this.camera);
+    this.ctx2d.clearRect(0, 0, width, height);
+    this.ctx2d.drawImage(s.renderer.domElement, 0, 0);
   }
 
   setPointer(clientX, clientY) {
@@ -737,7 +783,7 @@ export class Pet3D {
     this.shadow.position.x = s.shake.value + s.turn.value * 0.1;
 
     this.fx?.update(now, dt, state.pet);
-    this.renderer.render(this.scene, this.camera);
+    this.draw();
   }
 
   playScene(name, data, onDone) {
@@ -748,14 +794,13 @@ export class Pet3D {
     this.fx.play(name, data, onDone);
   }
 
-  // Frees the WebGL context right away; phones only allow a handful at once.
+  // Frees this pet's GPU resources; the shared context stays for the next pet.
   dispose() {
     this.disposed = true;
     this.listeners.abort();
     this.layerObserver.disconnect();
     this.texture.dispose();
-    this.renderer.dispose();
-    this.renderer.forceContextLoss();
+    disposeScene(this.scene);
     this.canvas.remove();
   }
 }

@@ -21,6 +21,7 @@ import { initSettings } from "./src/settings.js";
 import { initRealtime } from "./src/realtime.js";
 import { initFriends } from "./src/friends.js";
 import { initVersus } from "./src/Game/versus.js";
+import { initFps } from "./src/fps/index.js";
 import { initUi3d } from "./src/ui3d.js";
 import { initSkins } from "./src/skins.js";
 import { initTicTacToe } from "./src/Game/tictactoe.js";
@@ -53,6 +54,7 @@ document.addEventListener("DOMContentLoaded", function () {
   initSound();
   initRealtime();
   initVersus();
+  initFps();
   initUi3d();
   initTicTacToe();
   initChess();

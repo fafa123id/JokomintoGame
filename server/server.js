@@ -36,9 +36,12 @@ resumeMatches();
 const server = createApp().listen(config.port, () => {
   console.log(`JokomintoGame listening on http://localhost:${config.port} (${config.env})`);
 });
+const { attachFps } = await import("./fps/socket.js");
+const closeFps = attachFps(server);
 
 function shutdown() {
   closeStreams();
+  closeFps();
   server.close(() => {
     closeDb();
     process.exit(0);

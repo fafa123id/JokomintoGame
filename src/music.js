@@ -69,8 +69,11 @@ function start(name) {
   player.play().then(() => fadeTo(target)).catch(() => {});
 }
 
+// Paused while a Jokoman match is open: the shooter has its own sound.
+let suspended = false;
+
 function canPlay() {
-  return unlocked && !isMuted() && !document.hidden;
+  return unlocked && !isMuted() && !document.hidden && !suspended;
 }
 
 function switchScene(name) {
@@ -118,5 +121,10 @@ export function initMusic() {
   });
 
   window.addEventListener("sound:change", () => (isMuted() ? player.pause() : resume()));
+  window.addEventListener("fps:active", (e) => {
+    suspended = e.detail;
+    if (suspended) player.pause();
+    else resume();
+  });
   document.addEventListener("visibilitychange", () => (document.hidden ? player.pause() : resume()));
 }
