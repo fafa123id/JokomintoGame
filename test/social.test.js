@@ -21,6 +21,7 @@ before(async () => {
       NODE_ENV: "test",
       GOOGLE_CLIENT_ID: "",
       PIXABAY_API_KEY: "",
+      PRESENCE_TIMEOUT_MS: "1500",
     },
     stdio: "inherit",
   });
@@ -58,10 +59,16 @@ function client() {
     return { status: res.status, body: await res.json().catch(() => null) };
   };
   // Opens the event stream and collects events so tests can wait for them.
-  call.listen = async () => {
+  call.listen = async ({ keepAlive = true } = {}) => {
     const controller = new AbortController();
     streams.push(controller);
-    const res = await fetch(`${BASE}/api/events`, { headers: { Cookie: cookie }, signal: controller.signal });
+    const clientId = `test-${Math.random().toString(36).slice(2, 12)}`;
+    call.clientId = clientId;
+    const res = await fetch(`${BASE}/api/events?client=${clientId}`, { headers: { Cookie: cookie }, signal: controller.signal });
+    if (keepAlive) {
+      const timer = setInterval(() => call("/api/events/ping", { client: clientId, away: call.away ?? false }).catch(() => {}), 400);
+      controller.signal.addEventListener("abort", () => clearInterval(timer));
+    }
     assert.equal(res.headers.get("content-type"), "text/event-stream");
     const events = [];
     const waiters = [];
@@ -153,6 +160,48 @@ test("friend request, accept and live presence", async () => {
   assert.deepEqual(await b.next("friends:presence"), { id: a.user.id, status: "online" });
   a.close();
   assert.deepEqual(await b.next("friends:presence"), { id: a.user.id, status: "offline" });
+});
+
+test("logging in on a second device signs the first one out", async () => {
+  const email = `solo${Date.now()}@test.dev`;
+  const first = client();
+  await first("/api/auth/register", { name: "Solo", email, password: "password123" });
+  await first.listen();
+
+  const second = client();
+  const login = await second("/api/auth/login", { email, password: "password123" });
+  assert.equal(login.status, 200);
+  assert.ok((await first.next("session:replaced")).at);
+
+  const stale = await first("/api/pet");
+  assert.equal(stale.status, 401);
+  assert.equal(stale.body.details.code, "session_replaced");
+  assert.equal((await second("/api/pet")).status, 200);
+});
+
+test("away is shared with friends and a silent connection times out", async () => {
+  const a = await registered("Aldo");
+  const b = await registered("Bima");
+  await a("/api/friends/request", { uid: b.user.uid });
+  await b("/api/friends/respond", { userId: a.user.id, accept: true });
+  await b.listen();
+  await a.listen();
+  assert.deepEqual(await b.next("friends:presence"), { id: a.user.id, status: "online" });
+
+  a.away = true;
+  await a("/api/events/ping", { client: a.clientId, away: true });
+  assert.deepEqual(await b.next("friends:presence"), { id: a.user.id, status: "away" });
+  assert.equal((await b("/api/match/invite", { type: "chess", uid: a.user.uid })).status, 400);
+  a.away = false;
+  await a("/api/events/ping", { client: a.clientId, away: false });
+  assert.deepEqual(await b.next("friends:presence"), { id: a.user.id, status: "online" });
+  a.close();
+  await b.next("friends:presence");
+
+  // A tab that stops pinging (lost signal) is dropped after the timeout.
+  await a.listen({ keepAlive: false });
+  assert.deepEqual(await b.next("friends:presence"), { id: a.user.id, status: "online" });
+  assert.deepEqual(await b.next("friends:presence", 5000), { id: a.user.id, status: "offline" });
 });
 
 test("invite by UID works for guests; declining tells the sender", async () => {

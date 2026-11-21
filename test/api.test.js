@@ -323,6 +323,16 @@ test("CSRF: non-JSON and foreign origin are rejected", async () => {
   assert.equal(evil.status, 403);
 });
 
+test("page code is served under a build-versioned path", async () => {
+  const page = await fetch(BASE + "/").then((r) => r.text());
+  const build = page.match(/\/v\/([a-z0-9]+)\/index\.js/)?.[1];
+  assert.ok(build, "index.js should be versioned");
+  assert.doesNotMatch(page, /__BUILD__/);
+  assert.equal((await fetch(`${BASE}/v/${build}/src/stateManager.js`)).status, 200);
+  assert.equal((await fetch(`${BASE}/v/${build}/server/server.js`)).status, 404);
+  assert.equal((await fetch(`${BASE}/v/${build}/src/../package.json`)).status, 404);
+});
+
 test("server files are not publicly served", async () => {
   for (const p of ["/server/server.js", "/server/storage/images/car.jpg", "/package.json", "/.env", "/server/storage/database/game.db"]) {
     assert.equal((await fetch(BASE + p)).status, 404, p);

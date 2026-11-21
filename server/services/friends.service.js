@@ -2,7 +2,7 @@ import { transaction } from "../database/connection.js";
 import { Friendship } from "../models/friendship.model.js";
 import { User } from "../models/user.model.js";
 import { HttpError } from "../utils/httpError.js";
-import { send, isOnline, onPresence } from "../realtime/hub.js";
+import { send, isOnline, isAway, onPresence } from "../realtime/hub.js";
 import { activeMatchFor } from "./match.service.js";
 
 const MAX_FRIENDS = 100;
@@ -13,7 +13,8 @@ function requireRegistered(user) {
 
 export function presenceOf(userId) {
   if (!isOnline(userId)) return "offline";
-  return activeMatchFor(userId) ? "playing" : "online";
+  if (activeMatchFor(userId)) return "playing";
+  return isAway(userId) ? "away" : "online";
 }
 
 const person = (row) => ({

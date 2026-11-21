@@ -57,6 +57,10 @@ export const User = {
     return this.find(id);
   },
 
+  setSession(id, sessionId) {
+    db().prepare("UPDATE users SET session_id = ? WHERE id = ?").run(sessionId, id);
+  },
+
   touch(id) {
     db().prepare("UPDATE users SET last_seen_at = ? WHERE id = ?").run(Date.now(), id);
   },

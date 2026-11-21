@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import crypto from "node:crypto";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import config from "../config/index.js";
@@ -7,6 +8,7 @@ import { User } from "../models/user.model.js";
 import { Pet } from "../models/pet.model.js";
 import { PlayerStat } from "../models/playerStat.model.js";
 import { HttpError } from "../utils/httpError.js";
+import { kickUser } from "../realtime/hub.js";
 
 const { auth } = config;
 const googleClient = auth.googleClientId ? new OAuth2Client(auth.googleClientId) : null;
@@ -31,17 +33,35 @@ function discardGuest(currentUser, nextUserId) {
   return false;
 }
 
-export function issueToken(userId) {
-  return jwt.sign({ sub: userId }, auth.jwtSecret, { expiresIn: `${auth.tokenTtlDays}d`, algorithm: "HS256" });
+export function issueToken(userId, sessionId) {
+  return jwt.sign({ sub: userId, sid: sessionId }, auth.jwtSecret, { expiresIn: `${auth.tokenTtlDays}d`, algorithm: "HS256" });
 }
 
+// One active session per account: logging in again (password, Google, register) replaces it,
+// and other devices are told right away. The device that logged in keeps its live connection.
+export function startSession(userId, clientId) {
+  const sessionId = crypto.randomBytes(16).toString("hex");
+  User.setSession(userId, sessionId);
+  kickUser(userId, clientId, "session:replaced", { at: Date.now() });
+  return sessionId;
+}
+
+export function endSession(user) {
+  if (user && !user.is_guest) User.setSession(user.id, crypto.randomBytes(16).toString("hex"));
+}
+
+// Returns { user } for a valid token, { replaced: true } when the account has a newer session.
 export function userFromToken(token) {
-  if (!token) return null;
+  if (!token) return {};
   try {
-    const { sub } = jwt.verify(token, auth.jwtSecret, { algorithms: ["HS256"] });
-    return User.find(sub) ?? null;
+    const { sub, sid } = jwt.verify(token, auth.jwtSecret, { algorithms: ["HS256"] });
+    const user = User.find(sub);
+    if (!user) return {};
+    // Tokens issued before single sessions existed stay valid until the account logs in again.
+    if (user.session_id && user.session_id !== sid) return { replaced: true };
+    return { user };
   } catch {
-    return null;
+    return {};
   }
 }
 
@@ -102,6 +122,7 @@ export async function loginWithGoogle(credential, currentUser) {
 
 export function logout(currentUser) {
   if (currentUser?.is_guest) User.delete(currentUser.id);
+  else endSession(currentUser);
 }
 
 export function purgeInactiveGuests() {

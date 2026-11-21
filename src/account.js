@@ -250,8 +250,29 @@ function buildToolbar() {
   document.body.appendChild(bar);
 }
 
+let kicked = false;
+
+// This device was signed out because the account logged in somewhere else.
+function showSignedOutElsewhere() {
+  if (kicked) return;
+  kicked = true;
+  state.user = null;
+  renderAccountBadge();
+  const view = html(`
+    <div class="text-center">
+      <div class="kicked-art" aria-hidden="true"><span>📱</span><span class="kicked-arrow">➜</span><span>💻</span></div>
+      <h2 class="font-game text-2xl text-gray-800 mb-1">Signed in on another device</h2>
+      <p class="text-gray-500 text-sm mb-5">Your account was just used to log in somewhere else, so this device was signed out to keep it safe. Wasn't you? Change your password after logging in again.</p>
+      <button type="button" class="${ui.primary}">Log in again</button>
+    </div>`);
+  const reload = () => location.reload();
+  view.querySelector("button").addEventListener("click", reload);
+  openModal(view, { onClose: reload });
+}
+
 export async function initAccount() {
   buildToolbar();
+  window.addEventListener("session:replaced", showSignedOutElsewhere);
   window.addEventListener("auth:required", () => {
     state.user = null;
     renderAccountBadge();

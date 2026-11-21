@@ -5,6 +5,9 @@ export const state = {
 
 const OFFLINE_MESSAGE = "No internet connection 📶";
 
+// Identifies this tab, so logging in here doesn't sign this same tab out of its live connection.
+export const clientId = (globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`).slice(0, 40);
+
 let offline = typeof navigator !== "undefined" && navigator.onLine === false;
 
 export const isOffline = () => offline;
@@ -20,7 +23,7 @@ export function setPet(pet) {
 }
 
 export async function api(path, body, { silent401 = false } = {}) {
-  const options = { credentials: "same-origin", headers: {} };
+  const options = { credentials: "same-origin", headers: { "X-Client-Id": clientId } };
   if (body !== undefined) {
     options.method = "POST";
     options.headers["Content-Type"] = "application/json";
@@ -41,7 +44,9 @@ export async function api(path, body, { silent401 = false } = {}) {
     data = await res.json();
   } catch {}
 
-  if (res.status === 401 && !silent401 && !path.startsWith("/api/auth/")) {
+  if (res.status === 401 && data.details?.code === "session_replaced") {
+    window.dispatchEvent(new CustomEvent("session:replaced"));
+  } else if (res.status === 401 && !silent401 && !path.startsWith("/api/auth/")) {
     window.dispatchEvent(new CustomEvent("auth:required"));
   }
   if (data.pet) setPet(data.pet);

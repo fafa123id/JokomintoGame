@@ -10,6 +10,11 @@ const bool = (label) => (value) => (typeof value === "boolean" ? [value, null] :
 const userId = rules.integer({ min: 1, max: Number.MAX_SAFE_INTEGER, label: "Player" });
 const gameType = rules.oneOf(["tictactoe", "chess"], "Game");
 
+export const presencePingSchema = {
+  client: (value) => (typeof value === "string" && /^[a-z0-9-]{8,40}$/i.test(value) ? [value, null] : [undefined, "Client isn't valid"]),
+  away: optional(bool("Away")),
+};
+
 export const friendRequestSchema = { uid: optional(uid), userId: optional(userId) };
 export const friendRespondSchema = { userId, accept: bool("Answer") };
 export const friendRemoveSchema = { userId };

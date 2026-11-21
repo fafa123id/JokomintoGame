@@ -217,16 +217,22 @@
 }
 
 /* Tic tac toe */
+/* Rows and columns are locked to equal thirds so marks never stretch a row. */
 .xox-board {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
   gap: 10px;
   width: min(100%, 300px);
   aspect-ratio: 1;
 }
 .xox-cell {
   position: relative;
+  min-width: 0;
+  min-height: 0;
+  aspect-ratio: 1;
+  overflow: hidden;
   border-radius: 18px;
   background: #f3f4f6;
   box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.06);
@@ -1253,7 +1259,7 @@
 .vs-name span { font-size: 0.8rem; font-weight: 700; opacity: 0.95; }
 .vs-name small { font-size: 0.65rem; opacity: 0.75; letter-spacing: 0.06em; }
 .vs-versus { align-self: center; font-family: "Fredoka One", cursive; font-size: 1.6rem; color: #fde047; text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); }
-.vs-xox .vs-cell { display: grid; place-items: center; font-size: clamp(2rem, 13vw, 3.2rem); font-weight: 800; line-height: 1; }
+.vs-xox .vs-cell { display: grid; place-items: center; padding: 0; font-size: clamp(1.8rem, 10vw, 3rem); font-weight: 800; line-height: 1; }
 .vs-xox .vs-cell[data-mark="X"] { color: #ec4899; }
 .vs-xox .vs-cell[data-mark="O"] { color: #6366f1; }
 .vs-xox .vs-cell.is-last { box-shadow: inset 0 0 0 3px rgba(250, 204, 21, 0.7); }
@@ -1341,3 +1347,11 @@
   50% { transform: translateY(2px) scale(1.03, 0.97); }
 }
 .motion-reduced.is-sleeping #MainCharDiv .pet-sprite { animation: none; }
+
+.friend-dot.is-away { background: #facc15; box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.25); }
+
+/* Signed out because the account logged in elsewhere */
+.kicked-art { display: flex; align-items: center; justify-content: center; gap: 0.6rem; margin-bottom: 0.9rem; font-size: 2.4rem; }
+.kicked-arrow { font-size: 1.4rem; color: #8b5cf6; animation: kicked-slide 1.2s ease-in-out infinite; }
+@keyframes kicked-slide { 50% { transform: translateX(6px); opacity: 0.5; } }
+.motion-reduced .kicked-arrow { animation: none; }

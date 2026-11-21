@@ -6,7 +6,7 @@ import { User } from "../models/user.model.js";
 import { GameSession } from "../models/gameSession.model.js";
 import { PlayerStat } from "../models/playerStat.model.js";
 import { HttpError } from "../utils/httpError.js";
-import { send, isOnline, onPresence } from "../realtime/hub.js";
+import { send, isOnline, isAway, onPresence } from "../realtime/hub.js";
 import { getCurrentPet, mutatePet } from "./pet.service.js";
 import { baseFromDifficulty, coinReward } from "./scoring.service.js";
 import { winnerOf } from "./tictactoe.service.js";
@@ -258,6 +258,7 @@ export function invitePlayer(user, { type, friendId, uid }) {
     throw HttpError.forbidden("You can only invite friends from your list");
   }
   if (!isOnline(target.id)) throw HttpError.badRequest(`${target.name} is offline`);
+  if (isAway(target.id)) throw HttpError.badRequest(`${target.name} is away right now`);
   assertFree(user.id, "You're");
   assertFree(target.id, `${target.name} is`);
   for (const invite of invites.values()) {

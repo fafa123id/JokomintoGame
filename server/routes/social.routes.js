@@ -11,11 +11,14 @@ import {
   inviteCancelSchema,
   queueSchema,
   matchMoveSchema,
+  presencePingSchema,
 } from "../validators/social.validator.js";
 
 const MATCH_ID = /^[0-9a-f-]{36}$/i;
 
-export const eventRoutes = Router().get("/", requireAuth, social.events);
+export const eventRoutes = Router()
+  .get("/", requireAuth, social.events)
+  .post("/ping", requireAuth, validate(presencePingSchema), social.presencePing);
 
 export const friendRoutes = Router()
   .use(requireAuth)

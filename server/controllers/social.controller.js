@@ -1,10 +1,19 @@
 import * as friends from "../services/friends.service.js";
 import * as matches from "../services/match.service.js";
-import { connect } from "../realtime/hub.js";
+import crypto from "node:crypto";
+import { connect, ping } from "../realtime/hub.js";
 import { HttpError } from "../utils/httpError.js";
 
+const CLIENT_ID = /^[a-z0-9-]{8,40}$/i;
+
 export function events(req, res) {
-  connect(req, res, req.user.id);
+  const clientId = CLIENT_ID.test(req.query.client ?? "") ? req.query.client : crypto.randomUUID();
+  connect(req, res, req.user.id, clientId);
+}
+
+export function presencePing(req, res) {
+  ping(req.user.id, req.validated.client, req.validated.away === true);
+  res.status(204).end();
 }
 
 export const listFriends = (req, res) => res.json(friends.listFriends(req.user));

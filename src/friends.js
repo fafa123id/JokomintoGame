@@ -5,8 +5,11 @@ import { showMessage } from "./components.js";
 const STATUS = {
   online: { label: "Online", cls: "is-online" },
   playing: { label: "In a match", cls: "is-playing" },
+  away: { label: "Away", cls: "is-away" },
   offline: { label: "Offline", cls: "is-offline" },
 };
+
+const STATUS_ORDER = ["online", "playing", "away", "offline"];
 
 let view = null;
 let badge = null;
@@ -96,7 +99,7 @@ async function render() {
 
   const invite = (type, friend) => () => window.dispatchEvent(new CustomEvent("versus:invite", { detail: { type, friendId: friend.id, name: friend.name } }));
   const friends = res.friends
-    .sort((a, b) => (a.status === "offline") - (b.status === "offline"))
+    .sort((a, b) => STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status))
     .map((f) =>
       personRow(f, [
         actionButton("❌⭕", `Invite ${f.name} to tic-tac-toe`, invite("tictactoe", f), f.status === "online" ? "" : "is-hidden"),
