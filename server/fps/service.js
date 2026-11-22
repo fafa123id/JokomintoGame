@@ -1,6 +1,6 @@
 import { Room } from "./room.js";
 import { MAP_IDS } from "../../src/fps/shared/maps.js";
-import { RULES } from "../../src/fps/shared/rules.js";
+import { RULES, MODES } from "../../src/fps/shared/rules.js";
 import { transaction } from "../database/connection.js";
 import { GameSession } from "../models/gameSession.model.js";
 import { Match } from "../models/match.model.js";
@@ -10,8 +10,9 @@ import { getCurrentPet, mutatePet } from "../services/pet.service.js";
 import { baseFromDifficulty, coinReward } from "../services/scoring.service.js";
 import { COIN } from "../config/game.js";
 
-// Matchmaking for Jokoman 5v5: players queue, a match starts when 10 are waiting or after a short
-// wait, and bots fill every empty slot. One live connection per account.
+// Matchmaking for Jokoman 5v5: players queue for a mode (Bomb or Team Deathmatch), a match starts
+// when 10 are waiting or after a short wait, and bots fill every empty slot. One live connection
+// per account.
 const FILL_WAIT_MS = Number(process.env.FPS_FILL_WAIT_MS) || 10_000;
 const MAX_ROOMS = Number(process.env.FPS_MAX_ROOMS) || 6;
 const MATCH_SIZE = RULES.teamSize * 2;
@@ -28,14 +29,18 @@ const send = (ws, message) => ws?.readyState === 1 && ws.send(JSON.stringify(mes
 export const isInFps = (userId) => roomOfUser.has(userId);
 
 function queueStatus() {
-  const oldest = queue[0]?.joinedAt ?? Date.now();
-  for (const entry of queue) {
-    send(sockets.get(entry.userId), {
-      t: "queue",
-      waiting: queue.length,
-      fillInMs: Math.max(0, oldest + FILL_WAIT_MS - Date.now()),
-      full: rooms.size >= MAX_ROOMS,
-    });
+  for (const mode of MODES) {
+    const waiting = queue.filter((e) => e.mode === mode);
+    const oldest = waiting[0]?.joinedAt ?? Date.now();
+    for (const entry of waiting) {
+      send(sockets.get(entry.userId), {
+        t: "queue",
+        mode,
+        waiting: waiting.length,
+        fillInMs: Math.max(0, oldest + FILL_WAIT_MS - Date.now()),
+        full: rooms.size >= MAX_ROOMS,
+      });
+    }
   }
 }
 
@@ -79,13 +84,15 @@ function closeRoom(room) {
   room.dispose();
 }
 
-function startMatch(entries) {
+function startMatch(entries, mode) {
   const humans = entries.map((e) => ({ userId: e.userId, name: e.name, skin: e.skin, socket: sockets.get(e.userId) ?? null }));
   const mapId = MAP_IDS[Math.floor(Math.random() * MAP_IDS.length)];
   const room = new Room({
     mapId,
     humans,
     heroPick: true,
+    mode,
+    economy: mode === "bomb",
     onEnd: (r, result) => {
       const rewards = rewardsFor(r, result);
       setTimeout(() => closeRoom(r), 1000).unref?.();
@@ -101,10 +108,16 @@ function startMatch(entries) {
 }
 
 function matchmake() {
-  if (!queue.length || rooms.size >= MAX_ROOMS) return queueStatus();
-  const waitedLongEnough = Date.now() - queue[0].joinedAt >= FILL_WAIT_MS;
-  if (queue.length < MATCH_SIZE && !waitedLongEnough) return queueStatus();
-  startMatch(queue.splice(0, MATCH_SIZE));
+  for (const mode of MODES) {
+    if (rooms.size >= MAX_ROOMS) break;
+    const waiting = queue.filter((e) => e.mode === mode);
+    if (!waiting.length) continue;
+    const waitedLongEnough = Date.now() - waiting[0].joinedAt >= FILL_WAIT_MS;
+    if (waiting.length < MATCH_SIZE && !waitedLongEnough) continue;
+    const picked = waiting.slice(0, MATCH_SIZE);
+    for (const e of picked) queue.splice(queue.indexOf(e), 1);
+    startMatch(picked, mode);
+  }
   queueStatus();
 }
 
@@ -164,9 +177,12 @@ export function connect(ws, user) {
     switch (msg.t) {
       case "queue":
         if (room) return send(ws, room.welcome(room.attach(user.id, ws)));
-        if (!queue.some((e) => e.userId === user.id)) {
+        {
+          const mode = MODES.includes(msg.mode) ? msg.mode : "bomb";
+          // Switching modes while queued moves you to the other queue.
+          leaveQueue(user.id);
           const fresh = User.find(user.id) ?? user;
-          queue.push({ userId: user.id, name: fresh.name, skin: fresh.equipped_skin ?? "classic", joinedAt: Date.now() });
+          queue.push({ userId: user.id, name: fresh.name, skin: fresh.equipped_skin ?? "classic", mode, joinedAt: Date.now() });
         }
         return matchmake();
       case "cancel":
@@ -191,6 +207,9 @@ export function connect(ws, user) {
     else if (msg.t === "chat") room.chat(player, msg);
     else if (msg.t === "hero") room.heroAction(player, msg);
     else if (msg.t === "ability") room.useAbility(player, msg);
+    else if (msg.t === "buy" && typeof msg.item === "string") room.buy(player, msg.item);
+    else if (msg.t === "sell" && typeof msg.item === "string") room.sell(player, msg.item);
+    else if (msg.t === "scope") room.setScope(player, msg);
   });
 
   ws.on("close", () => {

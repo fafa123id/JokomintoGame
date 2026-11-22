@@ -1,4 +1,5 @@
 import { isMuted, getVolume } from "../sound.js";
+import { WEAPONS } from "./shared/weapons.js";
 
 // Synthesized FPS sounds: shots, hits, kills, bomb beeps. No audio files.
 let ctx = null;
@@ -100,16 +101,27 @@ function spatial(pos, { ref = 3, max = 70, rolloff = 1.1 } = {}) {
   return p;
 }
 
+// Gunshot character per weapon family: [crack gain, crack from Hz, length s, thump Hz, thump gain, echo gain].
+const SHOTS = {
+  pistol: [0.5, 6500, 0.12, 160, 0.28, 0.08],
+  revolver: [0.85, 4200, 0.2, 90, 0.45, 0.18],
+  smg: [0.45, 7000, 0.09, 180, 0.22, 0.06],
+  rifle: [0.7, 5200, 0.16, 120, 0.28, 0.12],
+  lmg: [0.75, 4600, 0.15, 100, 0.32, 0.12],
+  shotgun: [1, 3200, 0.3, 70, 0.55, 0.22],
+  sniper: [1, 3800, 0.35, 60, 0.6, 0.3],
+};
+
 // pos: world position for other players' shots; omit for your own.
 export function shot(weapon = "rifle", { pos = null } = {}) {
   if (!audio()) return;
   const t = now();
-  const dest = pos ? spatial(pos, { ref: 6, max: 120, rolloff: 0.9 }) : null;
-  const heavy = weapon === "rifle";
-  burst(t, { gain: heavy ? 0.7 : 0.5, from: heavy ? 5200 : 6500, to: 300, duration: heavy ? 0.16 : 0.12, dest });
-  tone(t, heavy ? 120 : 160, { gain: 0.28, duration: 0.09, type: "triangle", glide: 50, dest });
+  const dest = pos ? spatial(pos, { ref: 6, max: 140, rolloff: 0.9 }) : null;
+  const [gain, from, length, thump, thumpGain, echo] = SHOTS[WEAPONS[weapon]?.family] ?? SHOTS.rifle;
+  burst(t, { gain, from, to: 300, duration: length, dest });
+  tone(t, thump, { gain: thumpGain, duration: 0.09 + length * 0.3, type: "triangle", glide: 45, dest });
   // Tail echo off the walls.
-  burst(t + 0.06, { gain: heavy ? 0.12 : 0.08, from: 1800, to: 200, duration: 0.35, dest });
+  burst(t + 0.06, { gain: echo, from: 1800, to: 200, duration: 0.35 + length, dest });
 }
 
 // Two-part footfall (heel, then toe). Running is loud; others' steps are positional.
@@ -163,7 +175,7 @@ export function reload(weapon = "rifle", seconds = 2) {
   cancelReload();
   if (!audio()) return;
   const t = now();
-  const pistol = weapon === "pistol";
+  const pistol = ["pistol", "revolver"].includes(WEAPONS[weapon]?.family);
   const at = (k) => t + seconds * k;
   reloadNodes = [
     burst(at(0.22), { gain: 0.3, from: 2200, to: 900, duration: 0.07, type: "bandpass" }),
@@ -214,7 +226,7 @@ export function equip(weapon = "rifle") {
     burst(t, { gain: 0.2, from: 900, to: 400, duration: 0.08 });
     tone(t + 0.08, 1500, { gain: 0.06, duration: 0.06, type: "square" });
   } else {
-    const pistol = weapon === "pistol";
+    const pistol = ["pistol", "revolver"].includes(WEAPONS[weapon]?.family);
     burst(t, { gain: 0.3, from: pistol ? 3800 : 2800, to: 1200, duration: 0.05, type: "bandpass" });
     burst(t + (pistol ? 0.1 : 0.14), { gain: 0.4, from: pistol ? 4500 : 3500, to: 1500, duration: 0.05, type: "bandpass" });
     tone(t + (pistol ? 0.1 : 0.14), pistol ? 1100 : 850, { gain: 0.08, duration: 0.04, type: "square" });
@@ -246,6 +258,26 @@ export function defuseTick() {
   const t = now();
   if (Math.random() < 0.4) burst(t, { gain: 0.3, from: 7000, to: 3000, duration: 0.03, type: "highpass" });
   else burst(t, { gain: 0.15, from: 2500, to: 1200, duration: 0.04, type: "bandpass" });
+}
+
+// Heard by everyone nearby when a defuse starts: the kit snapping open.
+export function defuseStart({ pos = null } = {}) {
+  if (!audio()) return;
+  const t = now();
+  const dest = pos ? spatial(pos, { ref: 8, max: 70, rolloff: 0.7 }) : null;
+  burst(t, { gain: 0.8, from: 3500, to: 600, duration: 0.12, type: "bandpass", dest });
+  tone(t, 420, { gain: 0.25, duration: 0.18, type: "square", glide: 260, dest });
+  burst(t + 0.15, { gain: 0.6, from: 6000, to: 2500, duration: 0.06, type: "highpass", dest });
+}
+
+// Someone else's defuse in progress: wire snips, tool clicks and a chirp, loud and directional.
+export function defuseLoud({ pos = null, progress = 0 } = {}) {
+  if (!audio()) return;
+  const t = now();
+  const dest = pos ? spatial(pos, { ref: 8, max: 70, rolloff: 0.7 }) : null;
+  if (Math.random() < 0.5) burst(t, { gain: 0.7, from: 8000, to: 3000, duration: 0.04, type: "highpass", dest });
+  else burst(t, { gain: 0.55, from: 2800, to: 1300, duration: 0.05, type: "bandpass", dest });
+  tone(t + 0.02, 2200 + progress * 900, { gain: 0.14, duration: 0.05, type: "square", dest });
 }
 
 export function defuseDone() {
@@ -315,9 +347,16 @@ export function ability(kind, { pos = null } = {}) {
       tone(t, 1200, { gain: 0.07, duration: 0.6, type: "sine", glide: 300, ...o });
       tone(t + 0.05, 1800, { gain: 0.05, duration: 0.5, type: "sine", glide: 500, ...o });
       break;
-    case "jumpPad":
-    case "teamJump":
-      tone(t, 200, { gain: 0.15, duration: 0.3, type: "triangle", glide: 700, ...o });
+    case "boost":
+    case "rush":
+      tone(t, 300, { gain: 0.15, duration: 0.35, type: "triangle", glide: 900, ...o });
+      tone(t + 0.12, 600, { gain: 0.1, duration: 0.3, type: "triangle", glide: 1400, ...o });
+      break;
+    case "laser":
+      tone(t, 500, { gain: 0.1, duration: 0.2, type: "square", ...o });
+      break;
+    case "scouts":
+      tone(t, 220, { gain: 0.1, duration: 0.7, type: "sawtooth", glide: 260, ...o });
       break;
     case "grenade":
     case "barrage":
@@ -336,13 +375,29 @@ export function ability(kind, { pos = null } = {}) {
       tone(t, 1400, { gain: 0.12, duration: 0.5, type: "sine", glide: 1100, ...o });
       tone(t + 0.25, 1400, { gain: 0.06, duration: 0.5, type: "sine", glide: 1100, ...o });
       break;
-    case "sensor":
-      tone(t, 1900, { gain: 0.06, duration: 0.08, type: "square", ...o });
-      break;
     case "drone":
       tone(t, 140, { gain: 0.12, duration: 0.9, type: "sawtooth", glide: 180, ...o });
       break;
   }
+}
+
+// The laser zone arming: a rising siren everyone can hear, for the whole warning.
+export function alarm({ pos = null, seconds = 4.5 } = {}) {
+  if (!audio()) return;
+  const t = now();
+  const dest = pos ? spatial(pos, { ref: 10, max: 150, rolloff: 0.6 }) : null;
+  for (let i = 0; i < seconds * 2; i++) {
+    const urgent = i >= seconds * 2 - 3;
+    tone(t + i * 0.5, urgent ? 1200 : 700, { gain: 0.22, duration: 0.42, type: "sawtooth", glide: urgent ? 1600 : 950, dest });
+  }
+}
+
+// Electric stun.
+export function zap() {
+  if (!audio()) return;
+  const t = now();
+  burst(t, { gain: 0.5, from: 8000, to: 2000, duration: 0.25, type: "highpass" });
+  tone(t, 90, { gain: 0.25, duration: 0.3, type: "square", glide: 60 });
 }
 
 export function explosion() {

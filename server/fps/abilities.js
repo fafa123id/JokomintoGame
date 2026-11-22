@@ -1,17 +1,17 @@
-import { eyeHeight, aimDirection, rayWorld, forwardOf, collides, lineOfSight, smokeBetween, toCell, cellAt, PLAYER, KEY, WALL_HEIGHT, COVER_HEIGHT } from "../../src/fps/shared/physics.js";
-
+import { eyeHeight, aimDirection, forwardOf, collides, lineOfSight, smokeBetween, PLAYER, KEY } from "../../src/fps/shared/physics.js";
+import { deployPoint, deployWall, grenadeStart, grenadeStep, solidAt, validMapPoint } from "../../src/fps/shared/deploy.js";
 import { heroById, ULT } from "../../src/fps/shared/heroes.js";
 
 // Hero skills and ultimates, decided on the server. Effects live in this.effects (and walls in
 // room.map.blocks so movement, bullets and sight all respect them); each snapshot carries what a
-// player is allowed to see. Cooldowns reset every round, ultimate charge carries over.
+// player is allowed to see. Placement uses the same maths as the client's deploy preview.
+// Cooldowns reset every round, ultimate charge carries over.
 const SECOND = 1000;
-const GRAVITY = 14;
 
 const flat = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 export function abilityState() {
-  return { cdUntil: 0, ult: 0, shield: 0, shieldUntil: 0, stealthUntil: 0, revealUntil: 0, slowUntil: 0, jumpUntil: 0 };
+  return { cdUntil: 0, ult: 0, shield: 0, shieldUntil: 0, stealthUntil: 0, revealUntil: 0, slowUntil: 0, speedUntil: 0, focusUntil: 0, stunUntil: 0 };
 }
 
 export class Abilities {
@@ -35,14 +35,6 @@ export class Abilities {
     return [...this.room.players.values()].filter((q) => q.alive && q.team === p.team);
   }
 
-  // Where the player is aiming: the first wall/floor hit within range, or the point at range.
-  aimPoint(p, aim, range) {
-    const eye = { x: p.body.x, y: eyeHeight(p.body), z: p.body.z };
-    const dir = aimDirection(aim.y, aim.p);
-    const t = Math.max(0, rayWorld(this.room.map, eye, dir, range) - 0.4);
-    return { x: eye.x + dir.x * t, y: Math.max(0, eye.y + dir.y * t), z: eye.z + dir.z * t };
-  }
-
   add(effect) {
     effect.id = this.nextId++;
     this.effects.push(effect);
@@ -55,64 +47,85 @@ export class Abilities {
     this.pushes = [];
     this.fallen = [];
     for (const p of this.room.players.values()) {
-      Object.assign(p.abil, { cdUntil: 0, shield: 0, shieldUntil: 0, stealthUntil: 0, revealUntil: 0, slowUntil: 0, jumpUntil: 0 });
+      Object.assign(p.abil, { cdUntil: 0, shield: 0, shieldUntil: 0, stealthUntil: 0, revealUntil: 0, slowUntil: 0, speedUntil: 0, focusUntil: 0, stunUntil: 0 });
     }
+  }
+
+  stunned(p, now = this.now) {
+    return now < p.abil.stunUntil;
+  }
+
+  focused(p, now = this.now) {
+    return now < p.abil.focusUntil;
   }
 
   // ---------- use ----------
 
-  // slot: "skill" | "ult"; aim: { y, p } (view angles). Returns true when it went off.
+  // slot: "skill" | "ult"; aim: { y, p } view angles, plus points [{x, z}] for map-picked abilities.
+  // Returns true when it went off.
   use(p, slot, aim) {
     const room = this.room;
     const now = this.now;
     const hero = heroById(p.hero);
-    if (!hero || !p.alive || room.round.phase !== "live" || !Number.isFinite(aim?.y) || !Number.isFinite(aim?.p)) return false;
+    if (!hero || !p.alive || room.round.phase !== "live" || this.stunned(p, now)) return false;
+    if (!Number.isFinite(aim?.y) || !Number.isFinite(aim?.p)) return false;
     const a = p.abil;
     if (slot === "skill" && now < a.cdUntil) return false;
     if (slot === "ult" && a.ult < 100) return false;
-    const kind = slot === "skill" ? hero.skill.id : hero.ult.id;
-    const done = this[kind]?.(p, aim, now);
-    if (done === false) return false;
-    if (slot === "skill") a.cdUntil = now + hero.skill.cooldown * SECOND;
+    const ability = slot === "skill" ? hero.skill : hero.ult;
+    const result = this[ability.id]?.(p, aim, now);
+    if (result === false || result === undefined && !this[ability.id]) return false;
+    if (slot === "skill") a.cdUntil = now + ability.cooldown * SECOND * (result?.cooldown ?? 1);
     else a.ult = 0;
     // Using anything (but stealth itself) breaks stealth.
-    if (kind !== "stealth") a.stealthUntil = 0;
-    room.broadcast({ t: "ability", id: p.id, kind, hero: hero.id });
+    if (ability.id !== "stealth") a.stealthUntil = 0;
+    room.broadcast({ t: "ability", id: p.id, kind: ability.id, hero: hero.id });
     return true;
+  }
+
+  point(p, aim, range) {
+    return deployPoint(this.room.map, p.body, aim.y, aim.p, range);
+  }
+
+  // Map-picked points from the laptop, at most `count`, each on open floor.
+  mapPoints(aim, count) {
+    const points = (Array.isArray(aim.points) ? aim.points : []).slice(0, count).filter((q) => validMapPoint(this.room.map, q));
+    return points.length ? points : null;
   }
 
   // ---------- controller ----------
 
-  smoke(p, aim, now, r = 4.2, life = 12) {
-    const at = this.aimPoint(p, aim, 32);
-    this.add({ type: "smoke", team: p.team, x: at.x, y: 1.6, z: at.z, r, until: now + life * SECOND });
+  smoke(p, aim, now) {
+    const points = this.mapPoints(aim, 2);
+    if (!points) return false;
+    for (const q of points) this.add({ type: "smoke", team: p.team, x: q.x, y: 1.6, z: q.z, r: 4.2, until: now + 12 * SECOND });
+    // One cloud costs half the cooldown.
+    return { cooldown: points.length === 1 ? 0.5 : 1 };
   }
 
-  smokeDome(p, aim, now) {
-    this.smoke(p, aim, now, 9, 15);
+  laser(p, aim, now) {
+    const points = this.mapPoints(aim, 1);
+    if (!points) return false;
+    const q = points[0];
+    const armAt = now + 4.5 * SECOND;
+    this.add({ type: "laser", team: p.team, owner: p.id, x: q.x, z: q.z, r: 6, armAt, until: armAt + 4 * SECOND });
+    // Everyone hears it coming.
+    this.room.broadcast({ t: "laser_warn", x: q.x, z: q.z, r: 6, team: p.team, at: armAt });
   }
 
   wall(p, aim, now) {
-    // A 6 m wall across the aim direction, snapped to the grid axes.
-    const at = this.aimPoint(p, { y: aim.y, p: Math.min(aim.p, -0.05) }, 8);
-    const f = forwardOf(aim.y);
-    const alongX = Math.abs(f.z) > Math.abs(f.x);
-    const half = 3;
-    const thick = 0.25;
-    const block = alongX
-      ? { x0: at.x - half, x1: at.x + half, z0: at.z - thick, z1: at.z + thick, h: 3 }
-      : { x0: at.x - thick, x1: at.x + thick, z0: at.z - half, z1: at.z + half, h: 3 };
+    const block = deployWall(this.room.map, p.body, aim.y, aim.p, heroById("pagar").skill.deploy);
     this.addBlock(block, { type: "wall", team: p.team, hp: 350, until: now + 8 * SECOND });
   }
 
   slowZone(p, aim, now) {
-    const at = this.aimPoint(p, aim, 30);
+    const at = this.point(p, aim, 30);
     this.add({ type: "slow", team: p.team, x: at.x, z: at.z, r: 7, until: now + 8 * SECOND });
   }
 
   // ---------- skirmisher ----------
 
-  dash(p, aim, now) {
+  dash(p) {
     const keys = p.lastKeys ?? 0;
     const f = forwardOf(p.body.yaw);
     const r = { x: -f.z, z: f.x };
@@ -133,25 +146,27 @@ export class Abilities {
     p.abil.stealthUntil = now + 6 * SECOND;
   }
 
-  jumpPad(p, aim, now) {
-    const at = this.aimPoint(p, { y: aim.y, p: Math.min(aim.p, -0.3) }, 5);
-    this.add({ type: "pad", team: p.team, x: at.x, z: at.z, r: 1.1, until: now + 20 * SECOND });
+  boost(p, aim, now) {
+    const at = this.point(p, aim, 12);
+    this.add({ type: "boost", team: p.team, x: at.x, z: at.z, r: 2.5, until: now + 8 * SECOND });
   }
 
-  teamJump(p, aim, now) {
-    for (const q of this.teamOf(p)) if (flat(q.body, p.body) < 12) q.abil.jumpUntil = now + 10 * SECOND;
+  // Kafein: the whole team runs faster and shoots steadier for a moment.
+  rush(p, aim, now) {
+    for (const q of this.teamOf(p)) {
+      q.abil.speedUntil = Math.max(q.abil.speedUntil, now + 3 * SECOND);
+      q.abil.focusUntil = now + 3 * SECOND;
+    }
   }
 
   // ---------- assault ----------
 
   grenade(p, aim, now) {
-    const dir = aimDirection(aim.y, aim.p + 0.15);
-    const eye = eyeHeight(p.body);
-    this.add({ type: "grenade", team: p.team, owner: p.id, x: p.body.x + dir.x * 0.6, y: eye, z: p.body.z + dir.z * 0.6, vx: dir.x * 17, vy: dir.y * 17 + 2, vz: dir.z * 17, explodeAt: now + 1.6 * SECOND, dmg: 85, r: 5 });
+    this.add({ type: "grenade", team: p.team, owner: p.id, ...grenadeStart(p.body, aim.y, aim.p), explodeAt: now + 1.6 * SECOND, dmg: 85, r: 5 });
   }
 
   barrage(p, aim, now) {
-    const at = this.aimPoint(p, aim, 40);
+    const at = this.point(p, aim, 40);
     const shots = [];
     for (let i = 0; i < 9; i++) {
       const a = this.room.rng() * Math.PI * 2;
@@ -180,11 +195,11 @@ export class Abilities {
     const pullDist = Math.min(4.5, best.dist - 1.5);
     const k = 0.35;
     this.pushes.push({ id: e.id, vx: ((p.body.x - e.body.x) / best.dist) * (pullDist / k), vz: ((p.body.z - e.body.z) / best.dist) * (pullDist / k), until: now + k * SECOND });
-    this.room.broadcast({ t: "beam", from: p.id, to: e.id });
+    this.room.broadcast({ t: "beam", from: p.id, to: e.id, team: p.team });
   }
 
   vortex(p, aim, now) {
-    const at = this.aimPoint(p, aim, 30);
+    const at = this.point(p, aim, 30);
     this.add({ type: "vortex", team: p.team, x: at.x, z: at.z, r: 7, until: now + 1.6 * SECOND });
     for (const e of this.enemiesOf(p)) if (flat(e.body, at) < 7) e.abil.slowUntil = Math.max(e.abil.slowUntil, now + 3 * SECOND);
   }
@@ -192,7 +207,7 @@ export class Abilities {
   // ---------- support ----------
 
   heal(p, aim, now) {
-    const at = this.aimPoint(p, { y: aim.y, p: Math.min(aim.p, -0.4) }, 6);
+    const at = this.point(p, aim, 10);
     this.add({ type: "heal", team: p.team, x: at.x, z: at.z, r: 4, until: now + 6 * SECOND });
   }
 
@@ -224,19 +239,15 @@ export class Abilities {
   }
 
   shield(p, aim, now) {
-    const f = forwardOf(aim.y);
-    const at = { x: p.body.x + f.x * 1.6, z: p.body.z + f.z * 1.6 };
-    const alongX = Math.abs(f.z) > Math.abs(f.x);
-    const half = 1.5;
-    const thick = 0.15;
-    const block = alongX
-      ? { x0: at.x - half, x1: at.x + half, z0: at.z - thick, z1: at.z + thick, h: 2 }
-      : { x0: at.x - thick, x1: at.x + thick, z0: at.z - half, z1: at.z + half, h: 2 };
+    const block = deployWall(this.room.map, p.body, aim.y, aim.p, heroById("tameng").skill.deploy, 0.15, 2);
     this.addBlock(block, { type: "barrier", team: p.team, hp: 400, until: now + 10 * SECOND });
   }
 
+  // Electric dome: teammates walk through freely; enemies inside are stunned on entry, staggered
+  // (slowed) while inside and burn for 20 damage a second. Bullets from outside stop at the shell.
   dome(p, aim, now) {
-    this.add({ type: "dome", team: p.team, x: p.body.x, z: p.body.z, r: 4.5, hp: 1200, until: now + 8 * SECOND });
+    const at = this.point(p, aim, 10);
+    this.add({ type: "dome", team: p.team, owner: p.id, x: at.x, z: at.z, r: 4.5, hp: 1200, until: now + 8 * SECOND, inside: new Set(), burn: new Map() });
   }
 
   // ---------- recon ----------
@@ -255,11 +266,19 @@ export class Abilities {
       if (smokeBetween(smokes, eye, { x: e.body.x, y: e.body.y + 1.2, z: e.body.z })) continue;
       this.revealPlayer(e, now + 3 * SECOND);
     }
-    this.room.broadcast({ t: "scan", id: p.id, yaw: aim.y });
+    this.room.broadcast({ t: "scan", id: p.id, yaw: aim.y, team: p.team });
   }
 
   reveal(p, aim, now) {
     for (const e of this.enemiesOf(p)) if (now >= e.abil.stealthUntil) this.revealPlayer(e, now + 3 * SECOND);
+  }
+
+  // Defusing makes noise: attackers anywhere close enough hear it and come running.
+  hearDefuse(defuser) {
+    for (const q of this.room.players.values()) {
+      if (q.team === defuser.team || !q.brain || !q.alive) continue;
+      if (Math.hypot(q.body.x - defuser.body.x, q.body.z - defuser.body.z) < 45) q.brain.heard = { x: defuser.body.x, z: defuser.body.z, at: this.now };
+    }
   }
 
   revealPlayer(e, until) {
@@ -270,15 +289,17 @@ export class Abilities {
     }
   }
 
-  sensor(p, aim, now) {
-    const mine = this.effects.filter((e) => e.type === "sensor" && e.owner === p.id);
-    if (mine.length >= 2) this.effects.splice(this.effects.indexOf(mine[0]), 1);
-    const at = this.aimPoint(p, { y: aim.y, p: Math.min(aim.p, -0.1) }, 15);
-    this.add({ type: "sensor", team: p.team, owner: p.id, x: at.x, z: at.z, r: 3.5, until: Infinity });
+  // Two scout drones fly ahead (a little apart), revealing enemies they pass. 60 hp each.
+  scouts(p, aim, now) {
+    for (const spread of [-0.3, 0.3]) {
+      const f = forwardOf(aim.y + spread);
+      this.add({ type: "scout", team: p.team, owner: p.id, x: p.body.x + f.x * 0.8, y: 1.8, z: p.body.z + f.z * 0.8, vx: f.x * 6.5, vz: f.z * 6.5, hp: 60, maxHp: 60, until: now + 5 * SECOND });
+    }
   }
 
+  // The hunter drone: tougher (150 hp), seeks the nearest enemy and explodes.
   drone(p, aim, now) {
-    this.add({ type: "drone", team: p.team, owner: p.id, x: p.body.x, y: 2.2, z: p.body.z, until: now + 10 * SECOND });
+    this.add({ type: "drone", team: p.team, owner: p.id, x: p.body.x, y: 2.2, z: p.body.z, hp: 150, maxHp: 150, until: now + 10 * SECOND });
   }
 
   // ---------- walls ----------
@@ -323,9 +344,8 @@ export class Abilities {
     let best = null;
     for (const d of this.effects) {
       if (d.type !== "dome") continue;
-      const cy = 0;
       const ox = origin.x - d.x;
-      const oy = origin.y - cy;
+      const oy = origin.y;
       const oz = origin.z - d.z;
       if (ox * ox + oy * oy + oz * oz < d.r * d.r) continue;
       const b = ox * dir.x + oy * dir.y + oz * dir.z;
@@ -334,6 +354,25 @@ export class Abilities {
       if (disc < 0) continue;
       const t = -b - Math.sqrt(disc);
       if (t > 0 && t < maxDist && (!best || t < best.t)) best = { t, dome: d };
+    }
+    return best;
+  }
+
+  // Enemy drones a shot can hit: { t, drone } for the nearest along the ray, or null.
+  droneHit(origin, dir, maxDist, shooterTeam) {
+    let best = null;
+    for (const d of this.effects) {
+      if ((d.type !== "scout" && d.type !== "drone") || d.team === shooterTeam) continue;
+      const ox = origin.x - d.x;
+      const oy = origin.y - d.y;
+      const oz = origin.z - d.z;
+      const r = 0.4;
+      const b = ox * dir.x + oy * dir.y + oz * dir.z;
+      const c = ox * ox + oy * oy + oz * oz - r * r;
+      const disc = b * b - c;
+      if (disc < 0) continue;
+      const t = -b - Math.sqrt(disc);
+      if (t > 0 && t < maxDist && (!best || t < best.t)) best = { t, drone: d };
     }
     return best;
   }
@@ -355,10 +394,11 @@ export class Abilities {
       const amount = Math.round(dmg * (1 - (d / r) * 0.65));
       if (attacker) room.damage(attacker, e, amount, "body");
     }
-    // Explosions shred walls, barriers and domes.
+    // Explosions shred walls, barriers, domes and drones.
     for (const fx of this.effects) {
       if (fx.block && flat(blockCenter(fx.block), center) < r + 2) fx.hp -= dmg * 2.5;
       if (fx.type === "dome" && flat(fx, center) < r + fx.r) fx.hp -= dmg * 3;
+      if ((fx.type === "scout" || fx.type === "drone") && fx.team !== attacker?.team && flat(fx, center) < r) fx.hp -= dmg;
     }
   }
 
@@ -369,19 +409,22 @@ export class Abilities {
   }
 
   speedFactor(p, now = this.now) {
+    if (this.stunned(p, now)) return 0;
     let k = 1;
     if (now < p.abil.stealthUntil) k *= 1.3;
+    if (now < p.abil.speedUntil) k *= 1.3;
     if (now < p.abil.slowUntil) k *= 0.55;
     else if (this.effects.some((e) => e.type === "slow" && e.team !== p.team && flat(e, p.body) < e.r)) k *= 0.5;
     return k;
   }
 
-  jumpFactor(p, now = this.now) {
-    return now < p.abil.jumpUntil ? 1.75 : 1;
-  }
-
-  padsFor(p) {
-    return this.effects.filter((e) => e.type === "pad" && e.team === p.team).map((e) => ({ x: e.x, z: e.z, r: e.r }));
+  // Damage over time from one source, in whole points.
+  burn(owner, victim, store, dps, dt) {
+    const acc = (store.get(victim.id) ?? 0) + dps * dt;
+    const whole = Math.floor(acc);
+    store.set(victim.id, acc - whole);
+    const attacker = this.room.players.get(owner);
+    if (whole > 0 && attacker) this.room.damage(attacker, victim, whole, "body");
   }
 
   tick(now, dt) {
@@ -403,9 +446,13 @@ export class Abilities {
     });
     const keep = [];
     for (const e of this.effects) {
-      if (this.update(e, now, dt) === false || now >= e.until || (e.hp !== undefined && e.hp <= 0)) {
+      const broken = e.hp !== undefined && e.hp <= 0;
+      if (broken || this.update(e, now, dt) === false || now >= e.until) {
         if (e.block) this.removeBlock(e.block);
-        if (e.hp !== undefined && e.hp <= 0) room.broadcast({ t: "broken", fx: e.id, x: e.x ?? blockCenter(e.block).x, z: e.z ?? blockCenter(e.block).z });
+        if (broken) {
+          const at = e.block ? blockCenter(e.block) : e;
+          room.broadcast({ t: "broken", fx: e.id, kind: e.type, x: at.x, y: e.y ?? 1, z: at.z });
+        }
         continue;
       }
       keep.push(e);
@@ -413,33 +460,11 @@ export class Abilities {
     this.effects = keep;
   }
 
-  // Is there something solid at this height at (x, z)? Crates are COVER_HEIGHT tall, walls taller.
-  solidAt(x, y, z) {
-    const c = cellAt(this.room.map, toCell(x), toCell(z));
-    if (c === "#") return y < WALL_HEIGHT;
-    if (c === "=") return y < COVER_HEIGHT;
-    return (this.room.map.blocks ?? []).some((b) => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < b.h);
-  }
-
   // Returns false to remove the effect.
   update(e, now, dt) {
     const room = this.room;
     if (e.type === "grenade") {
-      e.vy -= GRAVITY * dt;
-      const nx = e.x + e.vx * dt;
-      const ny = e.y + e.vy * dt;
-      const nz = e.z + e.vz * dt;
-      // Bounce off walls and the floor; it flies over crates and walls lower than it is.
-      if (this.solidAt(nx, e.y, e.z)) e.vx *= -0.4;
-      else e.x = nx;
-      if (this.solidAt(e.x, e.y, nz)) e.vz *= -0.4;
-      else e.z = nz;
-      if (ny <= 0.1) {
-        e.y = 0.1;
-        e.vy = Math.abs(e.vy) * 0.35;
-        e.vx *= 0.6;
-        e.vz *= 0.6;
-      } else e.y = ny;
+      grenadeStep(room.map, e, dt);
       if (now >= e.explodeAt) {
         this.explode(e.owner, e, e.dmg, e.r);
         return false;
@@ -460,15 +485,45 @@ export class Abilities {
         if (!collides(room.map, q.body.x, nz)) q.body.z = nz;
       }
     } else if (e.type === "heal") {
-      for (const q of this.teamOf({ team: e.team })) if (flat(q.body, e) < e.r) q.hp = Math.min(PLAYER.maxHealth, q.hp + 14 * dt);
-    } else if (e.type === "sensor") {
-      const victim = this.enemiesOf({ team: e.team }).find((q) => flat(q.body, e) < e.r);
-      if (victim) {
-        this.revealPlayer(victim, now + 4 * SECOND);
-        victim.abil.slowUntil = Math.max(victim.abil.slowUntil, now + 2 * SECOND);
-        victim.abil.stealthUntil = 0;
-        room.broadcast({ t: "sensor_trip", x: e.x, z: e.z, victim: victim.id });
-        return false;
+      // Health only ever goes up in whole points; the fractions carry over to the next tick.
+      e.store ??= new Map();
+      for (const q of this.teamOf({ team: e.team })) {
+        if (flat(q.body, e) >= e.r || q.hp >= PLAYER.maxHealth) continue;
+        const acc = (e.store.get(q.id) ?? 0) + 14 * dt;
+        const whole = Math.floor(acc);
+        e.store.set(q.id, acc - whole);
+        q.hp = Math.min(PLAYER.maxHealth, q.hp + whole);
+      }
+    } else if (e.type === "boost") {
+      for (const q of this.teamOf({ team: e.team })) if (flat(q.body, e) < e.r) q.abil.speedUntil = Math.max(q.abil.speedUntil, now + 2 * SECOND);
+    } else if (e.type === "dome") {
+      for (const q of this.enemiesOf({ team: e.team })) {
+        if (flat(q.body, e) >= e.r) {
+          e.inside.delete(q.id);
+          continue;
+        }
+        // Stunned on the way in, staggered while inside.
+        if (!e.inside.has(q.id)) {
+          e.inside.add(q.id);
+          q.abil.stunUntil = Math.max(q.abil.stunUntil, now + 0.7 * SECOND);
+          room.sendTo(q, { t: "stunned", ms: 700 });
+        }
+        q.abil.slowUntil = Math.max(q.abil.slowUntil, now + 0.4 * SECOND);
+        this.burn(e.owner, q, e.burn, 20, dt);
+      }
+    } else if (e.type === "laser") {
+      if (now >= e.armAt) {
+        e.burnStore ??= new Map();
+        for (const q of this.enemiesOf({ team: e.team })) if (flat(q.body, e) < e.r) this.burn(e.owner, q, e.burnStore, 95, dt);
+      }
+    } else if (e.type === "scout") {
+      const nx = e.x + e.vx * dt;
+      const nz = e.z + e.vz * dt;
+      if (solidAt(room.map, nx, e.y, nz)) e.vx = e.vz = 0;
+      else Object.assign(e, { x: nx, z: nz });
+      for (const q of this.enemiesOf({ team: e.team })) {
+        if (now < q.abil.stealthUntil && flat(q.body, e) > 2.5) continue;
+        if (flat(q.body, e) < 7 && lineOfSight(room.map, e, { x: q.body.x, y: q.body.y + 1.2, z: q.body.z })) this.revealPlayer(q, now + 2.5 * SECOND);
       }
     } else if (e.type === "drone") {
       const target = this.enemiesOf({ team: e.team }).sort((a, b) => flat(a.body, e) - flat(b.body, e))[0];
@@ -515,27 +570,31 @@ export class Abilities {
     return amount;
   }
 
-  // What one player gets told: their own state, and the effects their team may see.
+  // What one player gets told: their own state, and the effects they may see.
   snapshotFor(me, now) {
     const effects = [];
     for (const e of this.effects) {
-      // Enemy sensors stay hidden unless you're right next to them.
-      if (e.type === "sensor" && e.team !== me.team && flat(e, me.body) > 6) continue;
       const out = { id: e.id, type: e.type, team: e.team };
       if (e.block) Object.assign(out, { x0: e.block.x0, z0: e.block.z0, x1: e.block.x1, z1: e.block.z1, h: e.block.h });
       else Object.assign(out, { x: round(e.x), y: round(e.y ?? 0), z: round(e.z), r: e.r });
+      if (e.maxHp) out.hp = Math.max(0, e.hp / e.maxHp);
+      if (e.type === "laser") out.armIn = Math.max(0, e.armAt - now);
       effects.push(out);
     }
     const a = me.abil;
+    const left = (until) => Math.max(0, until - now);
     return {
       effects,
       ab: {
-        cd: Math.max(0, a.cdUntil - now),
+        cd: left(a.cdUntil),
         ult: Math.floor(a.ult),
         sh: a.shield > 0 && now < a.shieldUntil ? Math.round(a.shield) : 0,
         sf: this.speedFactor(me, now),
-        jf: this.jumpFactor(me, now),
-        st: now < a.stealthUntil ? a.stealthUntil - now : 0,
+        st: left(a.stealthUntil),
+        sp: left(a.speedUntil),
+        fo: left(a.focusUntil),
+        stun: left(a.stunUntil),
+        slow: left(a.slowUntil),
       },
     };
   }

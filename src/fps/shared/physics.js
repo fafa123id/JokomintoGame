@@ -223,6 +223,31 @@ export function smokeBetween(smokes, a, b) {
   return false;
 }
 
+// Haze ranges from inside a smoke cloud.
+export const SMOKE_VIEW = { ownOut: 6, enemyIn: 2.5 };
+
+// Does smoke stop `team` seeing from a to b? Smoke is thick from outside. Inside your own team's
+// smoke the cloud is clear and the outside is hazy (only close things show). Inside the enemy's
+// smoke it's thick: only what's right next to you.
+export function smokeBlocks(smokes, team, a, b) {
+  if (!smokes?.length) return false;
+  const inside = (s, p) => (p.x - s.x) ** 2 + (p.y - s.y) ** 2 + (p.z - s.z) ** 2 < s.r * s.r;
+  const dist = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+  for (const s of smokes) {
+    const aIn = inside(s, a);
+    const bIn = inside(s, b);
+    if (s.team === team) {
+      if (aIn && bIn) continue;
+      if (aIn && dist <= SMOKE_VIEW.ownOut) continue;
+      if (aIn || bIn || smokeBetween([s], a, b)) return true;
+    } else {
+      if (aIn && dist <= SMOKE_VIEW.enemyIn) continue;
+      if (aIn || bIn || smokeBetween([s], a, b)) return true;
+    }
+  }
+  return false;
+}
+
 // True when nothing solid blocks the straight line between two points.
 export function lineOfSight(map, a, b) {
   const dx = b.x - a.x;

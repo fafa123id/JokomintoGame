@@ -1,4 +1,4 @@
-import { CELL, KEY, PLAYER, eyeHeight, forwardOf, lineOfSight, toCell, isSolid, collides, rayWorld, smokeBetween } from "../../src/fps/shared/physics.js";
+import { CELL, KEY, PLAYER, eyeHeight, forwardOf, lineOfSight, toCell, isSolid, collides, rayWorld, smokeBetween, smokeBlocks } from "../../src/fps/shared/physics.js";
 import { heroById } from "../../src/fps/shared/heroes.js";
 import { isWalkable, siteAt } from "../../src/fps/shared/maps.js";
 import { RULES, SIDES } from "../../src/fps/shared/rules.js";
@@ -17,6 +17,8 @@ const PUSH_AFTER_MS = 40_000;
 const ROTATE_AFTER_MS = 35_000;
 const FOLLOW_DIST = 5;
 const STUCK_MS = 1400;
+// How long a bot remembers where it last saw an enemy who vanished into smoke.
+const MEMORY_MS = 3500;
 
 export function createBrain(rng) {
   return {
@@ -45,6 +47,7 @@ export function createBrain(rng) {
     holdSite: null,
     holdCell: null,
     holdUntil: 0,
+    smokeCall: null,
     rotated: false,
     lastPos: null,
     lastMoveAt: 0,
@@ -150,9 +153,29 @@ function setupRound(room, p) {
 const goalAt = (pos, key, radius = 0.5) => ({ cell: cellOf(pos), key, exact: { x: pos.x, z: pos.z }, radius });
 const goalCell = (cell, key) => ({ cell, key, exact: center(cell), radius: 0.8 });
 
+// Team Deathmatch: chase whatever was last heard, hunt the nearest enemy, or roam the map.
+function tdmGoal(room, p, now) {
+  const brain = p.brain;
+  if (brain.heard && now - brain.heard.at < 4000) return goalAt(brain.heard, "heard", 2);
+  if (brain.goal?.key?.startsWith("roam") && now < brain.roamUntil) return brain.goal;
+  const prey = room
+    .playersOn(room.sideOf(p.team) === SIDES.ATTACK ? SIDES.DEFEND : SIDES.ATTACK)
+    .filter((e) => e.alive)
+    .sort((a, b) => dist2d(a.body, p.body) - dist2d(b.body, p.body))[0];
+  brain.roamUntil = now + 8000 + brain.rng() * 7000;
+  if (prey && brain.rng() < 0.55) return goalAt(prey.body, `roam-hunt-${prey.id}`, 3);
+  // A random open cell somewhere on the map.
+  for (let i = 0; i < 20; i++) {
+    const cell = { x: Math.floor(brain.rng() * room.map.width), z: Math.floor(brain.rng() * room.map.height) };
+    if (isWalkable(room.map, cell.x, cell.z)) return goalCell(cell, `roam-${cell.x}-${cell.z}`);
+  }
+  return goalAt(p.body, "roam-here", 1);
+}
+
 // Where this bot wants to be right now.
 function chooseGoal(room, p, now) {
   const brain = p.brain;
+  if (room.mode === "tdm") return tdmGoal(room, p, now);
   setupRound(room, p);
   const side = room.sideOf(p.team);
   const bomb = room.bomb;
@@ -161,6 +184,9 @@ function chooseGoal(room, p, now) {
 
   if (side === SIDES.ATTACK) {
     if (bomb.planted) {
+      // Someone is defusing: everyone goes for the defuser, through smoke or around walls.
+      const defuser = bomb.defuseStart && room.players.get(bomb.defuseStart.id);
+      if (defuser?.alive) return goalAt(defuser.body, `stop-defuse-${defuser.id}`, 1.5);
       const spots = postPlantSpots(room);
       const order = mates.sort((a, b) => a.id - b.id).indexOf(p);
       const spot = spots[order % Math.max(1, spots.length)];
@@ -238,7 +264,10 @@ function visibleEnemy(room, p, now) {
     const noticed = inView || dist < HEARING_RANGE || shotBy;
     if (!noticed) continue;
     const chest = { x: enemy.body.x, y: enemy.body.y + (enemy.body.crouch ? 0.9 : 1.25), z: enemy.body.z };
-    if (!lineOfSight(room.map, eye, chest) || smokeBetween(room.abilities.smokes(), eye, chest)) continue;
+    if (!lineOfSight(room.map, eye, chest)) continue;
+    // Same smoke rules as players: thick from outside, see-through only inside your own team's
+    // cloud (and only within it), blind inside the enemy's.
+    if (smokeBlocks(room.abilities.smokes(), p.team, eye, chest)) continue;
     if (!best || dist < best.dist) best = { enemy, dist };
   }
   return best;
@@ -347,6 +376,9 @@ function fight(room, p, seen, now, out) {
   out.pitch = steerPitch(brain, body.pitch, desiredPitch, dt * 1.6);
   const onTarget = Math.abs(angleDiff(out.yaw, yawTo(dx, dz))) < 0.06 + (0.6 / Math.max(flat, 1)) * 0.3;
 
+  // Snipers scope in at range; shotguns close the distance first.
+  out.scope = weapon.scope && flat > 10 ? (flat > 30 ? 2 : 1) : 0;
+  if (weapon.pellets && flat > 14) out.keys |= KEY.FORWARD;
   if (weapon.melee) {
     // Out of bullets: run in and slash.
     out.keys |= KEY.FORWARD;
@@ -355,13 +387,18 @@ function fight(room, p, seen, now, out) {
   }
   if (now >= brain.reactAt && onTarget && ammo?.mag > 0) {
     // Burst at range, spray up close.
-    out.fire = flat > 18 ? now - p.lastShotAt > weapon.interval * 1000 * 2.5 : true;
+    out.fire = weapon.pellets && flat > 18 ? false : flat > 18 && weapon.auto ? now - p.lastShotAt > weapon.interval * 1000 * 2.5 : true;
   }
   // Duck and weave: strafe changes direction irregularly, sometimes crouch-spraying.
   if (now > brain.strafeAt) {
     brain.strafe = brain.rng() < 0.5 ? -1 : 1;
     brain.strafeAt = now + 300 + brain.rng() * 700;
     if (brain.rng() < (shotAt ? 0.35 : 0.2)) brain.crouchUntil = now + 500 + brain.rng() * 700;
+  }
+  const back = retreatDir(room, p);
+  if (back) {
+    out.keys |= moveKeys(out.yaw, back);
+    return out;
   }
   out.keys |= brain.strafe > 0 ? KEY.RIGHT : KEY.LEFT;
   if (flat > 22) out.keys |= KEY.FORWARD;
@@ -370,6 +407,7 @@ function fight(room, p, seen, now, out) {
 }
 
 export function think(room, p, now) {
+  if (room.abilities.stunned(p, now)) return { keys: 0, yaw: p.body.yaw, pitch: p.body.pitch, fire: false, use: false, reload: false };
   const out = move(room, p, now);
   if (room.round.phase === "live" && p.hero) out.ability = chooseAbility(room, p, now, out);
   return out;
@@ -399,13 +437,22 @@ function chooseAbility(room, p, now, out) {
   const attacking = room.sideOf(p.team) === "attack";
   const busy = (bomb.carrier === p.id && bomb.plantStart) || bomb.defuseStart?.id === p.id;
   const teammateDown = room.abilities.fallen.some((f) => f.team === p.team && !room.players.get(f.id)?.alive);
-  const use = (slot, aim) => ({ slot, y: aim?.y ?? out.yaw, p: aim?.p ?? out.pitch });
+  const use = (slot, aim, points) => ({ slot, y: aim?.y ?? out.yaw, p: aim?.p ?? out.pitch, points });
+  const spot = (pos) => [{ x: pos.x, z: pos.z }];
+  const siteCenter = (site) => {
+    const cells = room.map.sites[site];
+    return { x: (cells.reduce((s, c) => s + c.x, 0) / cells.length + 0.5) * CELL, z: (cells.reduce((s, c) => s + c.z, 0) / cells.length + 0.5) * CELL };
+  };
 
   if (ult) {
     switch (hero.ult.id) {
-      case "smokeDome":
-        if (attacking && bomb.carrier && siteNear(room, room.players.get(bomb.carrier), 14)) return use("ult", { y: out.yaw, p: -0.2 });
-        if (!attacking && bomb.planted) return use("ult", at({ x: bomb.planted.x, z: bomb.planted.z }));
+      case "laser":
+        // Lasers on the planted bomb (defending) or on a fight in progress.
+        if (!attacking && bomb.planted) return use("ult", null, spot(bomb.planted));
+        if (seen && dist > 8) return use("ult", null, spot(seen.body));
+        break;
+      case "rush":
+        if (seen || (attacking && r < 0.15)) return use("ult");
         break;
       case "slowZone":
       case "vortex":
@@ -415,14 +462,11 @@ function chooseAbility(room, p, now, out) {
       case "stealth":
         if (attacking && !seen && r < 0.3) return use("ult");
         break;
-      case "teamJump":
-        if (!seen && r < 0.05) return use("ult");
-        break;
       case "revive":
         if (teammateDown && !seen) return use("ult");
         break;
       case "dome":
-        if (busy || (seen && p.hp < 50)) return use("ult");
+        if (busy || (seen && p.hp < 50)) return use("ult", { y: out.yaw, p: -1.2 });
         break;
       case "reveal":
       case "drone":
@@ -433,16 +477,20 @@ function chooseAbility(room, p, now, out) {
   if (!skill) return null;
   switch (hero.skill.id) {
     case "smoke":
-      if (seen && (p.hp < 60 || dist > 14) && r < 0.4) return use("skill", at(seen.body));
+      if (seen && (p.hp < 60 || dist > 14) && r < 0.4) return use("skill", null, spot(seen.body));
+      if (!seen && attacking && bomb.carrier && siteNear(room, room.players.get(bomb.carrier), 16) && r < 0.4) return use("skill", null, spot(siteCenter(bomb.botSite)));
+      break;
+    case "boost":
+      if (!seen && brain.goal && r < 0.08) return use("skill", { y: out.yaw, p: -1.2 });
+      break;
+    case "scouts":
+      if (!seen && r < 0.15) return use("skill", { y: out.yaw, p: 0 });
       break;
     case "wall":
       if (seen && (hurt || p.hp < 70) && r < 0.5) return use("skill", at(seen.body));
       break;
     case "dash":
       if (hurt && r < 0.6) return use("skill");
-      break;
-    case "jumpPad":
-      if (!seen && brain.goal && r < 0.05) return use("skill", { y: out.yaw, p: -0.8 });
       break;
     case "grenade":
       if (seen && dist > 5 && dist < 24) return use("skill", at(seen.body, 0.12 + dist * 0.012));
@@ -459,11 +507,100 @@ function chooseAbility(room, p, now, out) {
     case "scan":
       if (!seen && r < 0.12) return use("skill", { y: out.yaw, p: 0 });
       break;
-    case "sensor":
-      if (!seen && !attacking && r < 0.08) return use("skill", { y: out.yaw, p: -0.25 });
-      break;
   }
   return null;
+}
+
+function smokeTactics(room, p, now, out) {
+  const brain = p.brain;
+  const last = brain.lastSeen;
+  if (!last || now - last.at > MEMORY_MS) return null;
+  const enemy = room.players.get(last.id);
+  if (!enemy?.alive) return null;
+  const eye = { x: p.body.x, y: eyeHeight(p.body), z: p.body.z };
+  const spot = { x: last.x, y: 1.2, z: last.z };
+  const dist = Math.hypot(last.x - p.body.x, last.z - p.body.z);
+  // Reached the spot and nobody's there: give up and get back to the plan.
+  if (dist < 1.5) {
+    brain.lastSeen = null;
+    return null;
+  }
+  const smokes = room.abilities.smokes();
+  if (dist > 28 || !smokeBetween(smokes, eye, spot) || !lineOfSight(room.map, eye, spot)) return null;
+  // Each time someone vanishes into smoke the bot makes a fresh call, so it doesn't play the same
+  // way every time: chase them in, push up to the edge briefly, or just carry on with the plan.
+  // Lurkers and higher-skill bots chase more often; nobody stands around waiting.
+  const key = `${last.id}:${Math.round(last.x)}:${Math.round(last.z)}`;
+  if (brain.smokeCall?.key !== key) {
+    const chase = 0.35 + (brain.role === "lurk" ? 0.2 : 0) + (brain.skill - 0.7) * 0.4 + (room.bomb.defuseStart ? 0.3 : 0);
+    const r = brain.rng();
+    const style = r < chase ? "enter" : r < chase + 0.35 ? "edge" : "ignore";
+    brain.smokeCall = { key, style, until: now + 600 + brain.rng() * 1400 };
+  }
+  const call = brain.smokeCall;
+  if (call.style === "ignore") return null;
+  const dt = 1 / RULES.tickRate;
+  const yaw = yawTo(last.x - p.body.x, last.z - p.body.z);
+  out.yaw = steerYaw(brain, p.body.yaw, yaw, dt, 1.4);
+  out.pitch = steerPitch(brain, p.body.pitch, Math.atan2(1.2 - eyeHeight(p.body), dist), dt);
+  const toward = { x: (last.x - p.body.x) / dist, z: (last.z - p.body.z) / dist };
+  // No blind spraying either way.
+  //  enter: walk into the smoke after them, crosshair ready; up close they become visible and the
+  //         normal fight takes over.
+  //  edge:  push up toward the smoke for a moment with the angle covered, then carry on.
+  if (call.style === "edge") {
+    const cloud = smokes.find((s) => smokeBetween([s], eye, spot));
+    const toEdge = cloud ? Math.hypot(cloud.x - p.body.x, cloud.z - p.body.z) - cloud.r : 0;
+    if (now > call.until) {
+      call.style = "ignore";
+      return null;
+    }
+    if (toEdge > 1.5) out.keys |= moveKeys(out.yaw, toward);
+    return out;
+  }
+  out.keys |= moveKeys(out.yaw, toward);
+  return out;
+}
+
+// Own smoke as cover. Inside it the bot can't see out (same as a player), so it waits briefly and
+// then the smoke-chase logic walks it back out toward the last enemy it saw: shoot, retreat, repeat.
+function smokeCover(room, p, now, out) {
+  const brain = p.brain;
+  const mine = room.abilities.smokes().filter((s) => s.team === p.team);
+  if (!mine.length) return null;
+  const dt = 1 / RULES.tickRate;
+  const inside = mine.find((s) => Math.hypot(s.x - p.body.x, s.z - p.body.z) < s.r * 0.7);
+  if (inside) {
+    if (brain.retreating) {
+      brain.retreating = false;
+      brain.coverUntil = now + 700 + brain.rng() * 1100;
+    }
+    if (now >= (brain.coverUntil ?? 0)) return null;
+    const last = brain.lastSeen;
+    if (last) out.yaw = steerYaw(brain, p.body.yaw, yawTo(last.x - p.body.x, last.z - p.body.z), dt);
+    // Reload while hidden.
+    const ammo = p.ammo[p.weapon];
+    if (ammo && ammo.mag < WEAPONS[p.weapon].magazine && ammo.reserve > 0 && !p.reloadUntil) out.reload = true;
+    return out;
+  }
+  const pressured = now - brain.hurtAt < 1500 || (p.hp < 50 && brain.lastSeen && now - brain.lastSeen.at < 2000);
+  if (!pressured) return null;
+  const near = mine.map((s) => ({ s, d: Math.hypot(s.x - p.body.x, s.z - p.body.z) })).filter((c) => c.d < 10).sort((a, b) => a.d - b.d)[0];
+  if (!near) return null;
+  brain.retreating = true;
+  const dir = { x: (near.s.x - p.body.x) / near.d, z: (near.s.z - p.body.z) / near.d };
+  out.keys |= moveKeys(p.body.yaw, dir);
+  return out;
+}
+
+// In a losing fight next to our own smoke: back into it while still shooting.
+function retreatDir(room, p) {
+  if (p.hp >= 45) return null;
+  const mine = room.abilities.smokes().filter((s) => s.team === p.team);
+  const near = mine.map((s) => ({ s, d: Math.hypot(s.x - p.body.x, s.z - p.body.z) })).filter((c) => c.d < 8 && c.d > c.s.r * 0.6).sort((a, b) => a.d - b.d)[0];
+  if (!near) return null;
+  p.brain.retreating = true;
+  return { x: (near.s.x - p.body.x) / near.d, z: (near.s.z - p.body.z) / near.d };
 }
 
 function siteNear(room, player, range) {
@@ -482,7 +619,16 @@ function move(room, p, now) {
   if (ammo && ammo.mag === 0 && !p.reloadUntil) out.reload = true;
 
   const seen = visibleEnemy(room, p, now);
-  if (seen) return fight(room, p, seen, now, out);
+  if (seen) {
+    brain.lastSeen = { id: seen.enemy.id, x: seen.enemy.body.x, z: seen.enemy.body.z, at: now };
+    return fight(room, p, seen, now, out);
+  }
+  // Under pressure with our own smoke nearby: duck into it, wait a moment, then peek back out.
+  const cover = smokeCover(room, p, now, out);
+  if (cover) return cover;
+  // An enemy just slipped into smoke: go in after them (no blind spraying).
+  const smoke = smokeTactics(room, p, now, out);
+  if (smoke) return smoke;
   brain.target = null;
   if (ammo && ammo.mag < WEAPONS[p.weapon].magazine * 0.4 && ammo.reserve > 0 && !p.reloadUntil) out.reload = true;
 

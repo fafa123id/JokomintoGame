@@ -5,12 +5,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
-import { CELL, KEY, createBody, step, hitboxes, rayBox, rayWorld, aimDirection, collides, traceShot } from "../src/fps/shared/physics.js";
+import { CELL, KEY, createBody, step, hitboxes, rayBox, rayWorld, aimDirection, collides, traceShot, smokeBlocks } from "../src/fps/shared/physics.js";
 import { WEAPONS } from "../src/fps/shared/weapons.js";
 import { HEROES as heroList } from "../src/fps/shared/heroes.js";
 import { RULES } from "../src/fps/shared/rules.js";
 import { MAPS, MAP_IDS, isWalkable } from "../src/fps/shared/maps.js";
 import { Room } from "../server/fps/room.js";
+import { createBrain, think } from "../server/fps/bot.js";
 
 test("all five maps connect spawns and both bomb sites", () => {
   assert.equal(MAP_IDS.length, 5);
@@ -217,6 +218,7 @@ test("any weapon but the knife can be dropped and picked up by an empty slot", (
   room.updateGround(clock.advance(100));
   assert.equal(room.ground.length, 1);
   delete defender.ammo.rifle;
+  defender.slots.primary = null;
   room.updateGround(clock.advance(100));
   assert.equal(room.ground.length, 0);
   assert.equal(defender.ammo.rifle.mag, 7, "ammo travels with the gun");
@@ -375,7 +377,9 @@ test("every skill and ultimate goes off without errors", () => {
       attacker.hero = hero.id;
       attacker.abil.ult = 100;
       if (hero.ult.id === "revive") room.abilities.fallen.push({ id: room.playersOn("attack")[1].id, team: attacker.team, at: 0 });
-      const used = room.abilities.use(attacker, slot, { y: 0, p: -0.05 });
+      // Laptop abilities take map points; the spot between the two players is open beach.
+      const points = [{ x: attacker.body.x, z: attacker.body.z - 6 }];
+      const used = room.abilities.use(attacker, slot, { y: 0, p: -0.05, points });
       assert.ok(used || hero.skill.id === "pull", `${hero.id} ${slot}`);
       assert.doesNotThrow(() => run(env, 4000), `${hero.id} ${slot} ticks`);
       assert.ok(defender.hp <= 100);
@@ -387,8 +391,11 @@ test("abilities: smoke hides, walls block, shields soak, grenades hurt, pulls dr
   let env = abilityRoom();
   assert.deepEqual(env.room.computeVision().red, [env.defender.id]);
   env.attacker.hero = "kabut";
-  env.room.abilities.use(env.attacker, "skill", { y: 0, p: -0.1 });
+  const mid = { x: env.attacker.body.x, z: (env.attacker.body.z + env.defender.body.z) / 2 };
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: -0.1, points: [mid] });
   assert.deepEqual(env.room.computeVision().red, [], "smoke blocks sight");
+  // One smoke only: half the cooldown.
+  assert.equal(env.attacker.abil.cdUntil - env.room.clock(), 13_000);
 
   env = abilityRoom();
   env.attacker.hero = "pagar";
@@ -426,6 +433,291 @@ test("abilities: smoke hides, walls block, shields soak, grenades hurt, pulls dr
   env.defender.abil.ult = 100;
   env.room.abilities.use(env.defender, "ult", { y: 0, p: 0 });
   assert.deepEqual(env.room.computeVision().red, [], "stealth hides at range");
+});
+
+test("electric dome stuns and burns enemies inside; laser warns before it fires", () => {
+  let env = abilityRoom();
+  env.attacker.hero = "tameng";
+  env.attacker.abil.ult = 100;
+  env.defender.body = createBody(env.attacker.body.x, env.attacker.body.z - 5, 0);
+  env.room.abilities.use(env.attacker, "ult", { y: 0, p: -0.5 });
+  const dome = env.room.abilities.effects.find((e) => e.type === "dome");
+  env.defender.body = createBody(dome.x, dome.z, 0);
+  run(env, 100);
+  assert.ok(env.room.abilities.stunned(env.defender), "stunned on entry");
+  run(env, 2000);
+  assert.ok(env.defender.hp <= 62 && env.defender.hp >= 55, `burned ~40, hp ${env.defender.hp}`);
+
+  env = abilityRoom();
+  env.attacker.hero = "kabut";
+  env.attacker.abil.ult = 100;
+  const sockets = env.red;
+  env.room.abilities.use(env.attacker, "ult", { y: 0, p: 0, points: [{ x: env.defender.body.x, z: env.defender.body.z }] });
+  assert.ok(env.blue.inbox.some((m) => m.t === "laser_warn"), "enemies are warned");
+  run(env, 4000);
+  assert.equal(env.defender.hp, 100, "nothing before it arms");
+  run(env, 1500);
+  assert.ok(env.defender.hp < 100, "lasers hurt once armed");
+  assert.ok(sockets);
+});
+
+test("Kafein steadies aim; scout drones reveal and can be shot down", () => {
+  let env = abilityRoom();
+  env.attacker.hero = "kopi";
+  env.attacker.abil.ult = 100;
+  env.room.abilities.use(env.attacker, "ult", { y: 0, p: 0 });
+  assert.ok(env.room.abilities.focused(env.attacker));
+  assert.ok(env.room.abilities.speedFactor(env.attacker) > 1.2);
+
+  env = abilityRoom();
+  env.attacker.hero = "lebah";
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: 0 });
+  const scouts = env.room.abilities.effects.filter((e) => e.type === "scout");
+  assert.equal(scouts.length, 2);
+  run(env, 1000);
+  assert.ok(env.defender.abil.revealUntil > env.room.clock(), "revealed by a scout");
+  // The defender shoots one down.
+  const target = scouts[0];
+  const d = { x: target.x - env.defender.body.x, y: target.y - 1.6, z: target.z - env.defender.body.z };
+  const len = Math.hypot(d.x, d.y, d.z);
+  const hit = env.room.abilities.droneHit({ x: env.defender.body.x, y: 1.6, z: env.defender.body.z }, { x: d.x / len, y: d.y / len, z: d.z / len }, 50, env.defender.team);
+  assert.equal(hit?.drone, target);
+});
+
+test("healing only ever adds whole hit points", () => {
+  const env = abilityRoom();
+  env.attacker.hero = "jamu";
+  env.attacker.hp = 40;
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: -1.5 });
+  for (let i = 0; i < 40; i++) {
+    run(env, 50);
+    assert.ok(Number.isInteger(env.attacker.hp), `hp ${env.attacker.hp}`);
+  }
+  assert.ok(env.attacker.hp > 60);
+});
+
+test("bots walk into smoke after an enemy (no spraying), see up close inside it, and hunt a defuser", () => {
+  const env = humanRoom();
+  const { room } = env;
+  room.round.phase = "live";
+  room.round.ends = env.clock.now() + 60_000;
+  const bot = room.playersOn("attack").find((p) => p.bot);
+  const enemy = room.playersOn("defend").find((p) => p.bot);
+  for (const p of room.players.values()) if (p !== bot && p !== enemy) p.alive = false;
+  bot.brain ??= createBrain(Math.random);
+  bot.body = createBody(12.5 * CELL, 18.5 * CELL, 0);
+  enemy.body = createBody(12.5 * CELL, 14.5 * CELL, Math.PI);
+  // Enemy vanished into a smoke between them a moment ago.
+  room.abilities.add({ type: "smoke", team: enemy.team, x: enemy.body.x, y: 1.6, z: enemy.body.z + 4, r: 4.2, until: Infinity });
+  bot.brain.lastSeen = { id: enemy.id, x: enemy.body.x, z: enemy.body.z, at: env.clock.now() };
+  bot.body.yaw = 0;
+  bot.lastShotAt = 0;
+  bot.brain.smokeCall = { key: `${enemy.id}:${Math.round(enemy.body.x)}:${Math.round(enemy.body.z)}`, style: "enter", until: Infinity };
+  const out = think(room, bot, env.clock.now());
+  assert.ok(!out.fire, "no blind spraying");
+  assert.ok(out.keys & KEY.FORWARD, "walks into the smoke after them");
+  // At the spot with nobody found, it gives up the chase.
+  const saved = { ...bot.body };
+  const enemyAt = { ...enemy.body };
+  enemy.body = createBody(3.5 * CELL, 3.5 * CELL, 0);
+  bot.brain.lastSeen = { id: enemy.id, x: bot.body.x, z: bot.body.z - 0.5, at: env.clock.now() };
+  think(room, bot, env.clock.advance(50));
+  assert.equal(bot.brain.lastSeen, null, "leaves when the smoke is empty");
+  bot.body = saved;
+  enemy.body = enemyAt;
+
+  // The edge style pushes toward the smoke briefly, then carries on with its plan.
+  const cloud = room.abilities.effects[0];
+  bot.body = createBody(cloud.x, cloud.z + cloud.r + 4, 0);
+  const far = { x: cloud.x, z: cloud.z - 1 };
+  enemy.body = createBody(3.5 * CELL, 3.5 * CELL, 0);
+  bot.brain.lastSeen = { id: enemy.id, x: far.x, z: far.z, at: env.clock.now() };
+  bot.brain.smokeCall = { key: `${enemy.id}:${Math.round(far.x)}:${Math.round(far.z)}`, style: "edge", until: env.clock.now() + 800 };
+  bot.brain.target = null;
+  const push = think(room, bot, env.clock.advance(50));
+  assert.ok(push.keys & KEY.FORWARD, "pushes up toward the smoke");
+  for (let i = 0; i < 20; i++) think(room, bot, env.clock.advance(50));
+  assert.equal(bot.brain.smokeCall.style, "ignore", "then moves on without waiting");
+  enemy.body = enemyAt;
+
+  // Inside the enemy's smoke it's thick, but someone right next to you still shows.
+  enemy.body = createBody(12.5 * CELL, 18.5 * CELL - 2, Math.PI);
+  room.abilities.effects[0].z = enemy.body.z;
+  room.abilities.effects[0].x = enemy.body.x;
+  bot.brain.target = null;
+  think(room, bot, env.clock.advance(50));
+  assert.equal(bot.brain.target, enemy.id, "sees the enemy in the smoke up close");
+
+  // A defuse pulls attackers toward the defuser.
+  enemy.body = createBody(3.5 * CELL, 3.5 * CELL, 0);
+  room.abilities.effects = [];
+  room.bomb.planted = { x: enemy.body.x, z: enemy.body.z, site: "A", explodeAt: Infinity };
+  room.bomb.defuseStart = { id: enemy.id, at: env.clock.now() };
+  bot.brain.target = null;
+  bot.brain.lastSeen = null;
+  bot.brain.hurtBy = null;
+  think(room, bot, env.clock.advance(50));
+  assert.match(bot.brain.goal?.key ?? "", /^stop-defuse/);
+});
+
+test("smoke sight rules: thick outside, clear inside your own, hazy out of it, thick in the enemy's", () => {
+  const smoke = [{ x: 0, y: 1.6, z: 0, r: 4, team: "red" }];
+  const inside = { x: 0, y: 1.6, z: 0 };
+  const alsoInside = { x: 3, y: 1.6, z: 1 };
+  const nearOut = { x: 0, y: 1.6, z: 8 };
+  const farOut = { x: 0, y: 1.6, z: 20 };
+  // From outside, nobody sees in.
+  assert.ok(smokeBlocks(smoke, "red", farOut, inside));
+  assert.ok(smokeBlocks(smoke, "blue", farOut, inside));
+  // Own smoke: clear inside, hazy out (close yes, far no).
+  assert.ok(!smokeBlocks(smoke, "red", inside, alsoInside));
+  assert.ok(!smokeBlocks(smoke, "red", inside, { x: 0, y: 1.6, z: 5.5 }));
+  assert.ok(smokeBlocks(smoke, "red", inside, farOut));
+  // Enemy smoke: only what's right beside you.
+  assert.ok(!smokeBlocks(smoke, "blue", inside, { x: 1.5, y: 1.6, z: 0 }));
+  assert.ok(smokeBlocks(smoke, "blue", inside, alsoInside));
+  assert.ok(smokeBlocks(smoke, "blue", inside, nearOut));
+});
+
+function economyRoom(extra = {}) {
+  let t = 1_000_000;
+  const clock = { now: () => t, advance: (ms) => (t += ms) };
+  const room = new Room({ mapId: "pantai", clock: clock.now, rng: () => 0.99, autoTick: false, economy: true, humans: [{ userId: 1, name: "A", skin: "c", socket: fakeSocket() }, { userId: 2, name: "B", skin: "c", socket: fakeSocket() }], ...extra });
+  return { room, clock, me: room.playerOf(1), foe: room.playerOf(2) };
+}
+
+test("economy: pistol start, buy and sell in the buy phase, round pay and loss streak", () => {
+  const { room, clock, me, foe } = economyRoom();
+  assert.equal(me.credits, 800);
+  assert.deepEqual(me.slots, { primary: null, secondary: "pistol" });
+  room.buy(me, "sabit");
+  assert.equal(me.slots.secondary, "sabit");
+  assert.equal(me.credits, 0);
+  room.sell(me, "sabit");
+  assert.equal(me.credits, 800);
+  assert.equal(me.slots.secondary, "pistol");
+  room.buy(me, "rifle");
+  assert.equal(me.slots.primary, null, "can't afford a rifle");
+  room.buy(me, "light");
+  assert.equal(me.armor, 25);
+  // Shop closes once the round is live.
+  room.round.phase = "live";
+  room.buy(me, "rentet");
+  assert.equal(me.slots.secondary, "pistol");
+  // Kill pay, then round pay with a loss bonus for the other side.
+  room.damage(me, foe, 200, "body");
+  assert.equal(me.credits, 400 + 200);
+  room.endRound(room.sideOf(me.team), "elimination");
+  assert.equal(me.credits, 600 + 3000);
+  assert.equal(foe.credits, 800 + 1900);
+  // Armor soaks two thirds of a hit.
+  const env = economyRoom();
+  env.room.round.phase = "live";
+  env.me.armor = 50;
+  env.room.damage(env.foe, env.me, 30, "body");
+  assert.equal(env.me.hp, 90);
+  assert.equal(env.me.armor, 30);
+  // Survivors keep their guns next round; the fallen restart with the pistol.
+  const next = economyRoom();
+  next.me.credits = 5000;
+  next.room.buy(next.me, "rifle");
+  next.room.round.phase = "live";
+  next.room.damage(next.me, next.foe, 200, "body");
+  next.room.endRound(next.room.sideOf(next.me.team), "elimination");
+  next.room.startRound();
+  assert.equal(next.me.slots.primary, "rifle");
+  // The client's shop reads credits and this round's purchases from every snapshot.
+  next.room.sendSnapshots(next.clock.now());
+  const snap = next.me.socket.inbox.filter((m) => m.t === "snap").at(-1);
+  assert.equal(snap.me.cr, next.me.credits);
+  assert.ok(snap.me.cr > 4000, `round pay shows up (${snap.me.cr})`);
+  assert.deepEqual(snap.me.pu, [], "last round's purchases can't be sold back");
+  assert.equal(next.foe.slots.primary, null);
+  assert.equal(next.foe.slots.secondary, "pistol");
+  assert.ok(clock);
+});
+
+test("shotguns fire a spread of pellets and add the damage up", () => {
+  const env = abilityRoom();
+  env.attacker.slots.primary = "gledek";
+  env.attacker.ammo.gledek = { mag: 5, reserve: 20 };
+  env.attacker.weapon = "gledek";
+  env.defender.body = createBody(env.attacker.body.x, env.attacker.body.z - 4, 0);
+  env.room.fire(env.attacker, 0, Math.atan2(1.2 - 1.6, 4));
+  const shot = env.red.inbox.filter((m) => m.t === "shot").at(-1);
+  assert.equal(shot.paths.length, 12);
+  assert.ok(env.defender.hp < 100 - 17 * 2, `several pellets hit (hp ${env.defender.hp})`);
+});
+
+test("team deathmatch: kills score, the fallen respawn, first to the target wins", () => {
+  let t = 1_000_000;
+  let result = null;
+  const room = new Room({ mapId: "pantai", clock: () => t, rng: () => 0.5, autoTick: false, mode: "tdm", onEnd: (r, res) => (result = res), humans: [{ userId: 1, name: "A", skin: "c", socket: fakeSocket() }] });
+  const me = room.playerOf(1);
+  const foe = room.playersOn("defend")[0];
+  assert.equal(me.slots.primary, "rifle");
+  room.round.phase = "live";
+  room.round.ends = t + 60_000;
+  room.damage(me, foe, 200, "body");
+  assert.equal(room.score[me.team], 1);
+  assert.equal(foe.alive, false);
+  t += 3100;
+  room.tick();
+  assert.equal(foe.alive, true, "respawned");
+  assert.ok(room.clock() < foe.protectUntil, "spawn protection");
+  room.damage(me, foe, 200, "body");
+  assert.equal(foe.alive, true, "protected right after spawning");
+  // Loadout choice is free and used from the next spawn.
+  room.buy(me, "elang");
+  assert.equal(me.loadout.primary, "elang");
+  room.score[me.team] = 39;
+  foe.protectUntil = 0;
+  room.damage(me, foe, 200, "body");
+  assert.ok(room.over);
+  assert.ok(result);
+});
+
+test("sniper: two zoom levels, one round per shot and the scope comes back after the bolt", () => {
+  const env = abilityRoom();
+  const p = env.attacker;
+  p.slots.primary = "elang";
+  p.ammo.elang = { mag: 1, reserve: 15 };
+  p.weapon = "elang";
+  env.room.setScope(p, { level: 1 });
+  assert.equal(p.scoped, 1);
+  env.room.setScope(p, { level: 2 });
+  assert.equal(p.scoped, 2);
+  env.room.setScope(p, { level: 3 });
+  assert.equal(p.scoped, 2, "only two zoom levels");
+  env.room.fire(p, 0, 0);
+  assert.equal(p.ammo.elang.mag, 0);
+  assert.ok(p.reloadUntil > 0, "bolt starts right after the shot");
+  assert.equal(p.scoped, 0);
+  env.clock.advance(1600);
+  env.room.completeReload(p);
+  assert.deepEqual(p.ammo.elang, { mag: 1, reserve: 14 }, "1 / 14 after one shot");
+  assert.equal(p.scoped, 2, "back on the same zoom");
+});
+
+test("Tombak fires a three-round burst per click", () => {
+  const env = abilityRoom();
+  const p = env.attacker;
+  p.slots.primary = "tombak";
+  p.ammo.tombak = { mag: 24, reserve: 72 };
+  p.weapon = "tombak";
+  p.nextShot = 0;
+  env.room.fire(p, Math.PI, 0);
+  assert.equal(p.ammo.tombak.mag, 23);
+  // A second click mid-burst does nothing.
+  env.room.fire(p, Math.PI, 0);
+  assert.equal(p.ammo.tombak.mag, 23);
+  for (let i = 0; i < 4; i++) {
+    env.clock.advance(50);
+    env.room.tick();
+  }
+  assert.equal(p.ammo.tombak.mag, 21, "the other two rounds followed");
+  const shots = env.red.inbox.filter((m) => m.t === "shot" && m.id === p.id);
+  assert.equal(shots.length, 3);
 });
 
 function lineOfSightTest(room, a, b) {

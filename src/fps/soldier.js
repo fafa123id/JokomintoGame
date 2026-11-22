@@ -2,11 +2,12 @@ import * as THREE from "/asset/vendor/three/three.module.min.js";
 import { clone as cloneSkinned } from "/asset/vendor/three/addons/utils/SkeletonUtils.js";
 import { findNode, measure } from "./assets.js";
 import { makeWeapon } from "./models.js";
+import { WEAPON_IDS } from "./shared/weapons.js";
 
 // A rigged character loaded from soldier.glb (Mixamo-style rigs work out of the box). Same interface
 // as the procedural Humanoid: update(state, now, dt) drives animations from movement, the spine
 // follows the aim pitch, and the held weapon sits at the right hand pointing where the player aims.
-const WEAPON_INDEX = ["rifle", "pistol", "knife", "bomb"];
+const WEAPON_INDEX = WEAPON_IDS;
 const TEAM = { red: 0xb3342b, blue: 0x2f5fb3 };
 // Clip names are matched by these words when models.json doesn't name them.
 const CLIP_WORDS = {

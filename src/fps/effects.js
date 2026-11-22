@@ -2,7 +2,9 @@ import * as THREE from "/asset/vendor/three/three.module.min.js";
 
 // Visuals for hero abilities. sync() mirrors the effect list from each snapshot (creating, moving
 // and removing meshes by id); one-off events (explosions, scans, beams) animate and clean up.
-const TEAM = { red: 0xff6b5b, blue: 0x5ba8ff };
+// Everything placed by your team is green, by the enemy red, so you can tell them apart at a glance.
+const ALLY = 0x34d399;
+const ENEMY = 0xff4545;
 
 function softTexture() {
   const c = document.createElement("canvas");
@@ -29,6 +31,7 @@ export class EffectsView {
     this.mats = {
       smoke: new THREE.SpriteMaterial({ map: this.soft, color: 0xaab0b9, transparent: true, opacity: 1, depthWrite: false }),
       smokeCore: new THREE.MeshBasicMaterial({ color: 0xa3a9b2, transparent: true, opacity: 0.88, depthWrite: false, side: THREE.DoubleSide }),
+      smokeShell: new THREE.MeshBasicMaterial({ color: 0xb4b9c1, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.BackSide }),
       dark: new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.5, metalness: 0.6 }),
       led: new THREE.MeshBasicMaterial({ color: 0xff3030, toneMapped: false }),
       flash: new THREE.MeshBasicMaterial({ color: 0xffb347, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
@@ -46,7 +49,7 @@ export class EffectsView {
   }
 
   teamColor(team) {
-    return TEAM[team] ?? 0xffffff;
+    return team === this.myTeam ? ALLY : ENEMY;
   }
 
   glow(color, opacity) {
@@ -70,6 +73,15 @@ export class EffectsView {
         const core = new THREE.Mesh(this.geo.sphere, this.mats.smokeCore);
         core.scale.setScalar(e.r * 0.85);
         g.add(core);
+        parts.core = core;
+        // Seen from inside your own smoke: just a hazy wall around you.
+        const shell = new THREE.Mesh(this.geo.sphere, this.mats.smokeShell);
+        shell.scale.setScalar(e.r * 0.95);
+        shell.visible = false;
+        g.add(shell);
+        parts.shell = shell;
+        parts.r = e.r;
+        parts.ally = e.team === this.myTeam;
         parts.puffs = [];
         const count = Math.round(10 + e.r * 3);
         for (let i = 0; i < count; i++) {
@@ -89,7 +101,7 @@ export class EffectsView {
       case "barrier": {
         const wall = e.type === "wall";
         const mat = wall
-          ? new THREE.MeshStandardMaterial({ color: 0x9a8f80, roughness: 0.9, emissive: color, emissiveIntensity: 0.08 })
+          ? new THREE.MeshStandardMaterial({ color: 0x9a8f80, roughness: 0.9, emissive: color, emissiveIntensity: 0.22 })
           : new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.38, emissive: color, emissiveIntensity: 0.6, roughness: 0.2, depthWrite: false });
         const mesh = new THREE.Mesh(this.geo.box, mat);
         mesh.scale.set(e.x1 - e.x0, e.h, e.z1 - e.z0);
@@ -104,8 +116,9 @@ export class EffectsView {
       case "slow":
       case "heal":
       case "barrage":
-      case "vortex": {
-        const tint = { slow: 0x9b5cff, heal: 0x4ade80, barrage: 0xff5533, vortex: 0xb06bff }[e.type];
+      case "vortex":
+      case "laser": {
+        const tint = color;
         const ring = this.flatOnGround(new THREE.Mesh(this.geo.ring, this.glow(tint, 0.9)), 0.04);
         const fill = this.flatOnGround(new THREE.Mesh(this.geo.disc, this.glow(tint, 0.16)), 0.035);
         ring.scale.setScalar(e.r);
@@ -113,6 +126,21 @@ export class EffectsView {
         g.add(ring, fill);
         parts.ring = ring;
         parts.fill = fill;
+        if (e.type === "laser") {
+          // A ring of beams from the sky, switched on when the zone arms.
+          parts.beams = new THREE.Group();
+          for (let i = 0; i < 10; i++) {
+            const a = (i / 10) * Math.PI * 2;
+            const d = Math.sqrt(Math.random()) * e.r * 0.9;
+            const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 12, 6), this.glow(tint, 0.9));
+            beam.position.set(Math.cos(a) * d, 6, Math.sin(a) * d);
+            beam.userData.a = a;
+            beam.userData.d = d;
+            parts.beams.add(beam);
+          }
+          parts.beams.visible = false;
+          g.add(parts.beams);
+        }
         if (e.type === "vortex") {
           parts.spin = new THREE.Mesh(this.geo.torus, this.glow(tint, 0.7));
           parts.spin.rotation.x = Math.PI / 2;
@@ -123,10 +151,10 @@ export class EffectsView {
         g.position.set(e.x, 0, e.z);
         break;
       }
-      case "pad": {
-        const pad = this.flatOnGround(new THREE.Mesh(this.geo.disc, this.glow(0x34d399, 0.55)), 0.05);
+      case "boost": {
+        const pad = this.flatOnGround(new THREE.Mesh(this.geo.disc, this.glow(color, 0.35)), 0.05);
         pad.scale.setScalar(e.r);
-        const ring = this.flatOnGround(new THREE.Mesh(this.geo.ring, this.glow(0x6ee7b7, 1)), 0.06);
+        const ring = this.flatOnGround(new THREE.Mesh(this.geo.ring, this.glow(color, 1)), 0.06);
         ring.scale.setScalar(e.r);
         g.add(pad, ring);
         parts.ring = ring;
@@ -144,7 +172,12 @@ export class EffectsView {
         break;
       }
       case "dome": {
-        const dome = new THREE.Mesh(this.geo.dome, new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.22, emissive: color, emissiveIntensity: 0.5, roughness: 0.1, depthWrite: false, side: THREE.DoubleSide }));
+        const dome = new THREE.Mesh(this.geo.dome, new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.22, emissive: color, emissiveIntensity: 0.7, roughness: 0.1, depthWrite: false, side: THREE.DoubleSide, wireframe: false }));
+        // Arcs crawling over the electric shell.
+        const arcs = new THREE.Mesh(this.geo.dome, new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0.25, toneMapped: false }));
+        arcs.scale.setScalar(e.r * 1.01);
+        g.add(arcs);
+        parts.arcs = arcs;
         dome.scale.setScalar(e.r);
         const rim = this.flatOnGround(new THREE.Mesh(this.geo.ring, this.glow(color, 0.8)), 0.04);
         rim.scale.setScalar(e.r);
@@ -153,23 +186,7 @@ export class EffectsView {
         g.position.set(e.x, 0, e.z);
         break;
       }
-      case "sensor": {
-        const box = new THREE.Mesh(this.geo.box, this.mats.dark);
-        box.scale.set(0.2, 0.08, 0.2);
-        box.position.y = 0.04;
-        const led = new THREE.Mesh(this.geo.small, own ? this.glow(0x4ade80, 1) : this.mats.led);
-        led.scale.setScalar(0.3);
-        led.position.y = 0.1;
-        g.add(box, led);
-        parts.led = led;
-        if (own) {
-          const ring = this.flatOnGround(new THREE.Mesh(this.geo.ring, this.glow(0x4ade80, 0.35)), 0.03);
-          ring.scale.setScalar(e.r);
-          g.add(ring);
-        }
-        g.position.set(e.x, 0, e.z);
-        break;
-      }
+      case "scout":
       case "drone": {
         const body = new THREE.Mesh(this.geo.box, this.mats.dark);
         body.scale.set(0.3, 0.08, 0.3);
@@ -181,11 +198,12 @@ export class EffectsView {
           parts.rotors.push(r);
           g.add(r);
         }
-        const led = new THREE.Mesh(this.geo.small, own ? this.glow(0x4ade80, 1) : this.mats.led);
+        const led = new THREE.Mesh(this.geo.small, this.glow(color, 1));
         led.scale.setScalar(0.4);
         led.position.y = -0.05;
         g.add(led);
         parts.led = led;
+        if (e.type === "scout") g.scale.setScalar(0.7);
         g.position.set(e.x, e.y, e.z);
         break;
       }
@@ -207,6 +225,7 @@ export class EffectsView {
         this.items.set(e.id, item);
       }
       if (e.x !== undefined) item.target.set(e.x, e.y ?? 0, e.z);
+      item.data = e;
     }
     for (const [id, item] of this.items) {
       if (keep.has(id)) continue;
@@ -220,6 +239,52 @@ export class EffectsView {
     item.group.traverse((o) => {
       if (o.material && !Object.values(this.mats).includes(o.material)) o.material.dispose();
     });
+  }
+
+  // ---------- deploy preview ----------
+
+  // shape: { kind: "circle", at, r } | { kind: "wall", box } | { kind: "arc", points } | null
+  preview(shape) {
+    if (!this.ghost) {
+      const mat = this.glow(ALLY, 0.35);
+      this.ghost = {
+        ring: this.flatOnGround(new THREE.Mesh(this.geo.ring, this.glow(ALLY, 0.95)), 0.05),
+        fill: this.flatOnGround(new THREE.Mesh(this.geo.disc, mat), 0.045),
+        wall: new THREE.Mesh(this.geo.box, this.glow(ALLY, 0.3)),
+        arc: new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: ALLY, dashSize: 0.3, gapSize: 0.2, toneMapped: false })),
+        land: this.flatOnGround(new THREE.Mesh(this.geo.ring, this.glow(ALLY, 0.95)), 0.05),
+      };
+      for (const m of Object.values(this.ghost)) {
+        m.visible = false;
+        this.scene.add(m);
+      }
+    }
+    const gh = this.ghost;
+    for (const m of Object.values(gh)) m.visible = false;
+    if (!shape) return;
+    if (shape.kind === "circle") {
+      for (const m of [gh.ring, gh.fill]) {
+        m.visible = true;
+        m.scale.setScalar(shape.r);
+        m.position.x = shape.at.x;
+        m.position.z = shape.at.z;
+      }
+    } else if (shape.kind === "wall") {
+      const b = shape.box;
+      gh.wall.visible = true;
+      gh.wall.scale.set(b.x1 - b.x0, b.h, b.z1 - b.z0);
+      gh.wall.position.set((b.x0 + b.x1) / 2, b.h / 2, (b.z0 + b.z1) / 2);
+    } else if (shape.kind === "arc") {
+      gh.arc.geometry.dispose();
+      gh.arc.geometry = new THREE.BufferGeometry().setFromPoints(shape.points.map((p) => new THREE.Vector3(p.x, p.y, p.z)));
+      gh.arc.computeLineDistances();
+      gh.arc.visible = true;
+      const end = shape.points.at(-1);
+      gh.land.visible = true;
+      gh.land.scale.setScalar(5);
+      gh.land.position.x = end.x;
+      gh.land.position.z = end.z;
+    }
   }
 
   // ---------- one-off events ----------
@@ -260,22 +325,48 @@ export class EffectsView {
 
   // ---------- per frame ----------
 
+  // Returns "ally" | "enemy" | null: the kind of smoke the camera is in this frame.
   update(t, dt, camera) {
+    this.insideSmoke = null;
     for (const item of this.items.values()) {
       const g = item.group;
       const age = (t - item.born) / 1000;
       const p = item.parts;
       if (item.type === "smoke") {
-        g.scale.setScalar(Math.min(1, 0.2 + age * 2.5));
+        const grow = Math.min(1, 0.2 + age * 2.5);
+        g.scale.setScalar(grow);
         for (const s of p.puffs) s.material.rotation += s.userData.spin * dt;
-      } else if (item.type === "grenade" || item.type === "drone") {
+        // Inside a cloud: your own is clear inside with a hazy wall; the enemy's is thick.
+        const inside = camera && camera.position.distanceTo(g.position) < p.r * grow * 0.95;
+        const ally = inside && p.ally;
+        p.core.visible = !ally;
+        p.shell.visible = ally;
+        for (const s of p.puffs) s.visible = !inside;
+        if (inside) this.insideSmoke = ally ? "ally" : "enemy";
+      } else if (item.type === "grenade" || item.type === "drone" || item.type === "scout") {
         g.position.lerp(item.target, Math.min(1, dt * 14));
         p.led.visible = Math.floor(t / (item.type === "grenade" ? 120 : 300)) % 2 === 0;
         if (p.rotors) for (const r of p.rotors) r.rotation.y += dt * 40;
-      } else if (p.ring && item.type !== "pad") {
+      } else if (item.type === "laser") {
+        // Warning: the ring flashes faster as it arms; then the beams sweep the zone.
+        const armIn = item.data?.armIn ?? 0;
+        const armed = armIn <= 0;
+        p.ring.material.opacity = armed ? 1 : Math.floor(t / (armIn < 1500 ? 90 : 220)) % 2 ? 0.95 : 0.25;
+        p.fill.material.opacity = armed ? 0.3 : 0.12;
+        p.beams.visible = armed;
+        if (armed) {
+          for (const b of p.beams.children) {
+            b.userData.a += dt * 2.5;
+            b.position.set(Math.cos(b.userData.a) * b.userData.d, 6, Math.sin(b.userData.a) * b.userData.d);
+          }
+        }
+      } else if (item.type === "dome") {
+        p.arcs.material.opacity = 0.1 + Math.random() * 0.3;
+        p.arcs.rotation.y += dt * 0.8;
+      } else if (p.ring && item.type !== "boost") {
         p.ring.material.opacity = 0.6 + Math.sin(t / 180) * 0.3;
         if (p.spin) p.spin.rotation.z += dt * 6;
-      } else if (item.type === "pad") {
+      } else if (item.type === "boost") {
         p.ring.scale.setScalar(1.1 + ((t / 600) % 1) * 0.5);
         p.ring.material.opacity = 1 - ((t / 600) % 1);
       } else if (p.mesh) {
@@ -314,9 +405,14 @@ export class EffectsView {
       }
       return true;
     });
+    return this.insideSmoke;
   }
 
   dispose() {
+    for (const m of Object.values(this.ghost ?? {})) {
+      this.scene.remove(m);
+      m.material.dispose();
+    }
     for (const item of this.items.values()) this.remove(item);
     for (const ev of this.events) for (const o of ev.objects) this.scene.remove(o);
     for (const g of Object.values(this.geo)) g.dispose();

@@ -6,10 +6,42 @@ const MOUSE_SENS = 0.0022;
 const TOUCH_SENS = 0.0055;
 const STICK_RADIUS = 60;
 
+// Keys the game takes over in fullscreen (so Esc doesn't drop fullscreen and Ctrl+W can't close
+// the tab). Tab, Alt and the Windows/Cmd keys are left alone so Alt+Tab and the OS keep working.
+const LOCKED_KEYS = [
+  "Escape",
+  ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").map((c) => `Key${c}`),
+  ..."0123456789".split("").map((d) => `Digit${d}`),
+  "Space",
+  "Enter",
+  "Backspace",
+  "ControlLeft",
+  "ControlRight",
+  "ShiftLeft",
+  "ShiftRight",
+  "CapsLock",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Backquote",
+  "Minus",
+  "Equal",
+  "BracketLeft",
+  "BracketRight",
+  "Backslash",
+  "Semicolon",
+  "Quote",
+  "Comma",
+  "Period",
+  "Slash",
+];
+
 export const isTouchDevice = () => matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 1;
 
-export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onChat, onScoreboard, onLockChange, onPrimary, onWheel, onSpectate, onAbility }) {
-  const state = { yaw: 0, pitch: 0, keys: 0, fire: false, use: false, locked: false, typing: false };
+export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onChat, onScoreboard, onLockChange, onPrimary, onSecondary, onWheel, onSpectate, onAbility, onShop }) {
+  // sens: look sensitivity multiplier (lower while scoped in).
+  const state = { yaw: 0, pitch: 0, keys: 0, fire: false, use: false, locked: false, typing: false, sens: 1 };
   const pressed = new Set();
   const touch = isTouchDevice();
   const cleanups = [];
@@ -31,11 +63,20 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
   let touchKeys = 0;
 
   const look = (dx, dy, sens) => {
-    state.yaw -= dx * sens;
-    state.pitch = Math.max(-1.45, Math.min(1.45, state.pitch - dy * sens));
+    state.yaw -= dx * sens * state.sens;
+    state.pitch = Math.max(-1.45, Math.min(1.45, state.pitch - dy * sens * state.sens));
   };
 
   let requestLock = () => {};
+  const lockKeyboard = async () => {
+    if (!navigator.keyboard?.lock || !document.fullscreenElement) return;
+    try {
+      await navigator.keyboard.lock(LOCKED_KEYS);
+      keyboardLocked = true;
+    } catch {
+      keyboardLocked = false;
+    }
+  };
   if (!touch) {
     const canvas = root.querySelector("canvas");
     requestLock = async () => {
@@ -45,28 +86,37 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
       if (navigator.keyboard?.lock && !document.fullscreenElement) {
         try {
           await root.requestFullscreen({ navigationUI: "hide" });
-          await navigator.keyboard.lock();
-          keyboardLocked = true;
-        } catch {
-          keyboardLocked = false;
-        }
+        } catch {}
       }
+      await lockKeyboard();
       try {
         await canvas.requestPointerLock?.();
       } catch {}
     };
     // Buttons and the chat box handle their own clicks; anywhere else captures the mouse.
     on(root, "click", (e) => {
-      if (e.target.closest("button, input, form, .fps-pause-card, .fps-chat, .fps-pick")) return;
+      if (e.target.closest("button, input, form, .fps-pause-card, .fps-chat, .fps-pick, .fps-laptop, .fps-shop")) return;
       requestLock();
     });
     on(document, "fullscreenchange", () => {
-      if (document.fullscreenElement) return;
+      // Entering fullscreen by any route gets the key lock; leaving drops it.
+      if (document.fullscreenElement) return lockKeyboard();
       keyboardLocked = false;
       navigator.keyboard?.unlock?.();
       for (const code of [...pressed]) if (isCtrl(code)) pressed.delete(code);
       recompute();
     });
+    // Switching away (Alt+Tab, Win key, a notification) must not leave keys or the trigger held.
+    const releaseAll = () => {
+      pressed.clear();
+      state.fire = false;
+      state.use = false;
+      recompute();
+      onScoreboard?.(false);
+    };
+    on(window, "blur", releaseAll);
+    on(document, "visibilitychange", () => document.hidden && releaseAll());
+    on(window, "focus", () => lockKeyboard());
     on(document, "pointerlockchange", () => {
       state.locked = document.pointerLockElement === canvas;
       if (!state.locked) {
@@ -78,10 +128,13 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
     });
     on(document, "mousemove", (e) => state.locked && look(e.movementX, e.movementY, MOUSE_SENS));
     on(document, "mousedown", (e) => {
-      if (!state.locked || state.typing || e.button !== 0) return;
+      if (!state.locked || state.typing) return;
+      if (e.button === 2) return onSecondary?.();
+      if (e.button !== 0) return;
       state.fire = true;
       onPrimary?.();
     });
+    on(root, "contextmenu", (e) => e.preventDefault());
     on(document, "wheel", (e) => state.locked && !state.typing && Math.abs(e.deltaY) > 1 && onWheel?.(e.deltaY > 0 ? 1 : -1), { passive: true });
     on(document, "mouseup", (e) => e.button === 0 && (state.fire = false));
     on(document, "keydown", (e) => {
@@ -93,23 +146,26 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
       // With the keyboard locked the game owns every key, so browser shortcuts don't fire.
       if (keyboardLocked && (e.ctrlKey || e.metaKey || e.altKey)) e.preventDefault();
       if (isCtrl(e.code) && !keyboardLocked) return;
-      if (e.code === "Tab") {
+      // Alt+Tab belongs to the OS: never treat that Tab as the scoreboard key.
+      if (e.code === "Tab" && !e.altKey) {
         e.preventDefault();
         onScoreboard?.(true);
       }
       // Esc (a tap) opens the menu by releasing the mouse; holding it still leaves fullscreen.
       if (e.code === "Escape") return document.exitPointerLock?.();
+      if (e.code === "KeyB" && e.repeat) return;
       if (e.code === "Enter" || e.code === "NumpadEnter") {
         e.preventDefault();
         return onChat?.();
       }
       if (e.repeat && !keyMap[e.code]) return;
       if (e.code === "KeyR") onReload?.();
-      const slot = { Digit1: "rifle", Digit2: "pistol", Digit3: "knife", Digit4: "bomb" }[e.code];
+      const slot = { Digit1: "primary", Digit2: "secondary", Digit3: "knife", Digit4: "bomb" }[e.code];
       if (slot) onSwitch?.(slot);
       if (e.code === "KeyQ") onCycle?.(-1);
       if (e.code === "KeyE") onCycle?.(1);
       if (e.code === "KeyG") onDrop?.();
+      if (e.code === "KeyB") onShop?.();
       if (e.code === "KeyZ") onAbility?.("skill");
       if (e.code === "KeyX") onAbility?.("ult");
       if (e.code === "KeyF") state.use = true;

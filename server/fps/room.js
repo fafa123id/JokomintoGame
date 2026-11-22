@@ -1,20 +1,22 @@
 import crypto from "node:crypto";
-import { step, createBody, eyeHeight, aimDirection, hitboxes, rayBox, rayWorld, lineOfSight, forwardOf, toCell, traceShot, smokeBetween, PLAYER } from "../../src/fps/shared/physics.js";
-import { WEAPONS, WEAPON_ORDER, GUNS, SPRAY_RECOVERY } from "../../src/fps/shared/weapons.js";
+import { step, createBody, eyeHeight, aimDirection, hitboxes, rayBox, rayWorld, lineOfSight, forwardOf, toCell, traceShot, smokeBlocks, PLAYER } from "../../src/fps/shared/physics.js";
+import { WEAPONS, WEAPON_IDS, DEFAULT_SECONDARY, ARMOR, ARMOR_SOAK, SPRAY_RECOVERY } from "../../src/fps/shared/weapons.js";
 import { MAPS, siteAt, isWalkable } from "../../src/fps/shared/maps.js";
-import { RULES, SIDES } from "../../src/fps/shared/rules.js";
+import { RULES, SIDES, ECONOMY, TDM } from "../../src/fps/shared/rules.js";
 import { createBrain, think, hearShot } from "./bot.js";
 import { Abilities, abilityState } from "./abilities.js";
 import { HEROES, HERO_IDS, PICK_SECONDS, heroById, ULT } from "../../src/fps/shared/heroes.js";
 
-// One authoritative 5v5 Bomb match. Humans send inputs and shots; bots fill the empty slots
-// (and take over for anyone who disconnects). Everything that matters is decided here.
+// One authoritative 5v5 match: Bomb (rounds, economy) or Team Deathmatch (respawns, kill race).
+// Humans send inputs and shots; bots fill the empty slots (and take over for anyone who
+// disconnects). Everything that matters is decided here.
 const TICK_MS = 1000 / RULES.tickRate;
 const HISTORY_MS = 450;
 const BOT_NAMES = ["Jokobot", "Botjo", "Robojoko", "Jokotron", "Mecha Joko", "Joko-9000", "Bit Joko", "Jokodroid", "Sir Botjo", "Jokomatic"];
 
-const fullAmmo = () => Object.fromEntries(GUNS.map((id) => [id, { mag: WEAPONS[id].magazine, reserve: WEAPONS[id].reserve }]));
+const fullAmmo = (id) => ({ mag: WEAPONS[id].magazine, reserve: WEAPONS[id].reserve });
 const NO_AMMO = { mag: 0, reserve: 0 };
+const SLOTS = ["primary", "secondary"];
 const CHAT_MAX = 120;
 const CHAT_GAP_MS = 500;
 const DROP_LOCK_MS = 1200;
@@ -34,8 +36,13 @@ const round3 = (v) => Math.round(v * 1000) / 1000;
 const pt = (p) => [round2(p.x), round2(p.y), round2(p.z)];
 
 export class Room {
-  constructor({ mapId, humans = [], onEnd = () => {}, clock = () => Date.now(), rng = Math.random, autoTick = true, heroPick = false }) {
+  // economy: Valorant-style credits and buying (Bomb only); without it everyone gets a rifle and
+  // pistol every round (quick tests and practice).
+  constructor({ mapId, humans = [], onEnd = () => {}, clock = () => Date.now(), rng = Math.random, autoTick = true, heroPick = false, mode = "bomb", economy = false }) {
     this.id = crypto.randomUUID();
+    this.mode = mode === "tdm" ? "tdm" : "bomb";
+    this.economy = economy && this.mode === "bomb";
+    this.lossStreak = { red: 0, blue: 0 };
     // Each room gets its own blocks list (ability walls); the grid itself is shared and read-only.
     this.map = { ...MAPS[mapId], blocks: [] };
     this.abilities = new Abilities(this);
@@ -86,7 +93,16 @@ export class Room {
       hp: PLAYER.maxHealth,
       alive: true,
       weapon: "rifle",
-      ammo: fullAmmo(),
+      slots: { primary: null, secondary: null },
+      ammo: {},
+      credits: ECONOMY.start,
+      armor: 0,
+      purchases: [],
+      // Team Deathmatch spawns with this (picked freely in the loadout menu).
+      loadout: { primary: "rifle", secondary: DEFAULT_SECONDARY },
+      scoped: false,
+      respawnAt: 0,
+      protectUntil: 0,
       reloadUntil: 0,
       nextShot: 0,
       spray: 0,
@@ -104,6 +120,8 @@ export class Room {
       assists: 0,
       damageFrom: new Map(),
       brain: bot ? createBrain(this.rng) : null,
+      // Bots in Team Deathmatch each favour a gun.
+      ...(bot ? { loadout: { primary: ["rifle", "rifle", "tombak", "tawon", "gledek", "gerinda", "elang"][Math.floor(this.rng() * 7)], secondary: DEFAULT_SECONDARY } } : {}),
       ...pick,
       abil: abilityState(),
       lastKeys: 0,
@@ -113,6 +131,7 @@ export class Room {
   // ---------- sides and rounds ----------
 
   sideOf(team, n = this.round.n) {
+    if (this.mode === "tdm") return team === "red" ? SIDES.ATTACK : SIDES.DEFEND;
     const redAttacks = Math.floor((Math.max(1, n) - 1) / RULES.swapAfter) % 2 === 0;
     return (team === "red") === redAttacks ? SIDES.ATTACK : SIDES.DEFEND;
   }
@@ -128,8 +147,10 @@ export class Room {
   startRound() {
     const now = this.clock();
     const previous = this.round.n;
-    this.round = { n: this.round.n + 1, phase: "buy", ends: now + RULES.buySec * 1000, winner: null, reason: null };
+    this.round = { n: this.round.n + 1, phase: "buy", ends: now + this.buySeconds() * 1000, winner: null, reason: null };
     const swap = previous > 0 && this.sideOf("red", previous) !== this.sideOf("red");
+    // A new half (or the first round) resets the economy: pistols, starting credits, no armor.
+    const newHalf = previous === 0 || swap;
     this.ground = [];
     this.groundId = 1;
     this.clutch = { red: null, blue: null };
@@ -141,8 +162,10 @@ export class Room {
         p.body = createBody(spot.x, spot.z, towardCenter);
         p.hp = PLAYER.maxHealth;
         p.alive = true;
-        p.weapon = "rifle";
-        p.ammo = fullAmmo();
+        this.outfit(p, newHalf);
+        p.purchases = [];
+        p.scoped = 0;
+        p.respawnAt = 0;
         p.reloadUntil = 0;
         p.spray = 0;
         p.using = false;
@@ -158,10 +181,11 @@ export class Room {
     const humans = attackers.filter((p) => !p.bot && p.socket);
     const bots = attackers.filter((p) => !humans.includes(p));
     const pool = humans.length && (!bots.length || this.rng() < RULES.humanCarrierChance) ? humans : bots;
-    const carrier = pool[Math.floor(this.rng() * pool.length)];
-    this.bomb = { carrier: carrier.id, dropped: null, planted: null, plantStart: null, defuseStart: null, botSite: this.rng() < 0.5 ? "A" : "B", dropBy: null, dropUntil: 0, revealed: false };
+    const carrier = this.mode === "bomb" ? pool[Math.floor(this.rng() * pool.length)] : null;
+    this.bomb = { carrier: carrier?.id ?? null, dropped: null, planted: null, plantStart: null, defuseStart: null, botSite: this.rng() < 0.5 ? "A" : "B", dropBy: null, dropUntil: 0, revealed: false };
     this.history = [];
     this.abilities.resetRound();
+    if (this.economy) for (const p of this.players.values()) if (p.bot || !p.socket) this.botBuy(p);
     const matchPoint = Object.keys(this.score).filter((team) => this.score[team] === RULES.roundsToWin - 1);
     this.broadcast({ t: "round", n: this.round.n, attack: this.teamOf(SIDES.ATTACK), score: this.score, swap, matchPoint });
   }
@@ -174,6 +198,7 @@ export class Room {
     this.round.winner = team;
     this.round.reason = reason;
     this.round.ends = this.clock() + RULES.endSec * 1000;
+    if (this.economy) this.payRound(team);
     // A clutch: the last one standing against two or more, and the round still went their way.
     const clutch = this.clutch[team];
     this.broadcast({ t: "round_end", winner: team, side: winnerSide, reason, score: this.score, clutch: clutch && clutch.vs >= 2 ? clutch : null });
@@ -189,8 +214,11 @@ export class Room {
     if (round.phase === "pick") this.updatePick(now);
     else if (round.phase === "buy" && now >= round.ends) {
       round.phase = "live";
-      round.ends = now + RULES.roundSec * 1000;
+      round.ends = now + (this.mode === "tdm" ? TDM.matchSec : RULES.roundSec) * 1000;
       this.broadcast({ t: "live" });
+    } else if (this.mode === "tdm" && round.phase === "live") {
+      this.respawnDue(now);
+      if (now >= round.ends) return this.finish(this.score.red === this.score.blue ? null : this.score.red > this.score.blue ? "red" : "blue");
     } else if (round.phase === "end" && now >= round.ends) {
       const winner = Object.entries(this.score).find(([, v]) => v >= RULES.roundsToWin)?.[0];
       if (winner) return this.finish(winner);
@@ -205,15 +233,29 @@ export class Room {
       this.armBot(p);
       const input = think(this, p, now);
       step(this.map, p.body, input.keys, input.yaw, input.pitch, TICK_MS / 1000, this.moveOptions(p));
-      if (input.ability) this.abilities.use(p, input.ability.slot, { y: input.ability.y ?? input.yaw, p: input.ability.p ?? input.pitch });
+      if (input.ability) this.abilities.use(p, input.ability.slot, { y: input.ability.y ?? input.yaw, p: input.ability.p ?? input.pitch, points: input.ability.points });
       p.using = input.use;
       if (input.fire) this.fire(p, input.yaw, input.pitch, now);
       if (input.reload) this.startReload(p);
+      if (input.scope !== undefined && input.scope !== p.scoped) this.setScope(p, { level: input.scope });
+    }
+    // Rounds still to come from a burst.
+    for (const p of this.players.values()) {
+      const b = p.burst;
+      if (!b || now < b.nextAt - 5) continue;
+      if (!p.alive || p.weapon !== b.weapon || !(p.ammo[p.weapon]?.mag > 0)) {
+        p.burst = null;
+        continue;
+      }
+      this.fire(p, p.body.yaw, p.body.pitch, b.viewTime === null || b.viewTime === undefined ? null : b.viewTime + (now - b.start), true);
+      b.left -= 1;
+      b.nextAt = now + WEAPONS[b.weapon].burstGap * 1000;
+      if (b.left <= 0) p.burst = null;
     }
 
     this.updateGround(now);
     this.abilities.tick(now, TICK_MS / 1000);
-    if (round.phase === "live") this.updateBomb(now);
+    if (round.phase === "live" && this.mode === "bomb") this.updateBomb(now);
     this.recordHistory(now);
     this.spotted = this.computeVision();
     this.sendSnapshots(now);
@@ -244,6 +286,8 @@ export class Room {
           bomb.plantStart = null;
           this.holsterBomb(carrier);
           carrier.abil.ult = Math.min(100, carrier.abil.ult + ULT.plant);
+          // The plant pays every attacker, win or lose.
+          if (this.economy) for (const q of attackers) this.earn(q, ECONOMY.plant);
           this.round.ends = bomb.planted.explodeAt;
           // Defenders only learn that it was planted, not where.
           for (const p of this.players.values()) {
@@ -255,6 +299,7 @@ export class Room {
       const defuser = defenders.find((p) => p.alive && p.using && near(p, bomb.planted, RULES.defuseRange) && still(p));
       if (defuser && (!bomb.defuseStart || bomb.defuseStart.id === defuser.id)) {
         bomb.defuseStart ??= { id: defuser.id, at: now };
+        this.abilities.hearDefuse(defuser);
         if (now - bomb.defuseStart.at >= RULES.defuseSec * 1000) {
           defuser.abil.ult = Math.min(100, defuser.abil.ult + ULT.defuse);
           this.broadcast({ t: "defused", by: defuser.id });
@@ -295,10 +340,10 @@ export class Room {
         // Stealth hides anyone not right next to you; smoke blocks sight.
         if (now < enemy.abil.stealthUntil && dist > 4) return false;
         const eye = { x: viewer.body.x, y: eyeHeight(viewer.body), z: viewer.body.z };
-        if (smokeBetween(smokes, eye, chest) && smokeBetween(smokes, eye, head)) return false;
+        if (smokeBlocks(smokes, viewer.team, eye, chest) && smokeBlocks(smokes, viewer.team, eye, head)) return false;
         return lineOfSight(this.map, eye, chest) || lineOfSight(this.map, eye, head);
       });
-      // Scans and sensors reveal through walls.
+      // Scans and scout drones reveal through walls.
       if (seen || now < enemy.abil.revealUntil) spotted[enemy.team === "red" ? "blue" : "red"].push(enemy.id);
     }
     return spotted;
@@ -357,22 +402,22 @@ export class Room {
   moveOptions(p) {
     return {
       frozen: this.round.phase !== "live",
-      speed: WEAPONS[p.weapon].speed * this.abilities.speedFactor(p),
-      jump: this.abilities.jumpFactor(p),
-      pads: this.abilities.padsFor(p),
+      // Scoped in, you walk slowly.
+      speed: WEAPONS[p.weapon].speed * this.abilities.speedFactor(p) * (p.scoped ? 0.7 : 1),
     };
   }
 
-  useAbility(p, { slot, y, p: pitch }) {
+  useAbility(p, { slot, y, p: pitch, points }) {
     if (slot !== "skill" && slot !== "ult") return;
-    this.abilities.use(p, slot, { y, p: pitch });
+    this.abilities.use(p, slot, { y, p: pitch, points });
   }
 
-  fire(p, yaw, pitch, viewTime = null) {
+  // fromBurst: a follow-up round of a burst already under way (skips the trigger cooldown).
+  fire(p, yaw, pitch, viewTime = null, fromBurst = false) {
     const now = this.clock();
-    if (!p.alive || this.round.phase !== "live" || !Number.isFinite(yaw) || !Number.isFinite(pitch)) return;
+    if (!p.alive || this.round.phase !== "live" || !Number.isFinite(yaw) || !Number.isFinite(pitch) || this.abilities.stunned(p)) return;
     const weapon = WEAPONS[p.weapon];
-    if (now < p.nextShot - 15 || p.reloadUntil) return;
+    if ((!fromBurst && now < p.nextShot - 15) || p.reloadUntil) return;
     if (weapon.melee) return this.slash(p, yaw, pitch, now, viewTime);
     if (!weapon.gun) return;
     const ammo = p.ammo[p.weapon];
@@ -381,16 +426,23 @@ export class Room {
 
     p.spray = Math.max(0, p.spray - (SPRAY_RECOVERY * (now - p.lastShotAt)) / 1000);
     const moving = Math.hypot(p.body.vx, p.body.vz) / PLAYER.speed;
-    let spread = weapon.spread + p.spray + weapon.moveSpread * Math.min(1, moving) + (p.body.grounded ? 0 : weapon.airSpread);
+    const base = p.scoped && weapon.scopedSpread !== undefined ? weapon.scopedSpread : weapon.spread;
+    let spread = base + p.spray + weapon.moveSpread * Math.min(1, moving) + (p.body.grounded ? 0 : weapon.airSpread);
+    // Kafein: steadier aim and less recoil.
+    const focus = this.abilities.focused(p);
+    if (focus) spread *= 0.4;
     if (p.body.crouch) spread *= weapon.crouchFactor;
-    const angle = this.rng() * Math.PI * 2;
-    const radius = Math.sqrt(this.rng()) * spread;
-    const dir = aimDirection(yaw + Math.cos(angle) * radius, pitch + Math.sin(angle) * radius);
     const origin = { x: p.body.x, y: eyeHeight(p.body), z: p.body.z };
+    // Spawn protection ends the moment you shoot.
+    p.protectUntil = 0;
 
     ammo.mag -= 1;
-    p.nextShot = now + weapon.interval * 1000;
-    p.spray = Math.min(weapon.sprayMax, p.spray + weapon.sprayStep);
+    if (weapon.burst && !fromBurst) {
+      // One click, several rounds: the rest follow on the tick, aimed wherever the player is looking.
+      p.burst = { weapon: p.weapon, left: weapon.burst - 1, start: now, nextAt: now + weapon.burstGap * 1000, viewTime };
+      p.nextShot = now + ((weapon.burst - 1) * weapon.burstGap + weapon.interval) * 1000;
+    } else if (!weapon.burst) p.nextShot = now + weapon.interval * 1000;
+    p.spray = Math.min(weapon.sprayMax, p.spray + weapon.sprayStep * (focus ? 0.4 : 1));
     p.lastShotAt = now;
 
     const rewindTo = Math.min(now, Math.max(now - RULES.maxRewindMs, viewTime ?? now));
@@ -402,6 +454,8 @@ export class Room {
     // Domes stop shots coming from outside; walls and barriers are part of the world ray.
     const hitTest = (o, d, maxDist) => {
       let best = this.abilities.domeHit(o, d, maxDist);
+      const drone = this.abilities.droneHit(o, d, best?.t ?? maxDist, p.team);
+      if (drone) best = drone;
       for (const { target, body } of bodies) {
         for (const box of hitboxes(body)) {
           const t = rayBox(o, d, box.min, box.max);
@@ -411,13 +465,34 @@ export class Room {
       return best;
     };
     hearShot(this, p, now);
-    const shot = traceShot(this.map, origin, dir, { speed: weapon.velocity, range: weapon.range }, hitTest);
-    // Send a thinned path: enough for the client to draw the arc.
-    const path = shot.points.filter((_, i) => i % 4 === 0 || i === shot.points.length - 1).map(pt);
-    this.broadcast({ t: "shot", id: p.id, w: p.weapon, path, v: weapon.velocity, hit: !!shot.hit });
-    if (shot.hit?.dome) shot.hit.dome.hp -= weapon.damage;
-    else if (shot.hit) this.damage(p, shot.hit.target, Math.round(weapon.damage * weapon.multipliers[shot.hit.part]), shot.hit.part);
-    else this.abilities.hitBlockAt(shot.end, weapon.damage);
+    // Shotguns fire a spread of pellets; everything else one bullet. Damage to the same player
+    // from one trigger pull is added up into a single hit.
+    const paths = [];
+    const hits = new Map();
+    let anyHit = false;
+    for (let i = 0; i < (weapon.pellets ?? 1); i++) {
+      const angle = this.rng() * Math.PI * 2;
+      const radius = Math.sqrt(this.rng()) * spread;
+      const dir = aimDirection(yaw + Math.cos(angle) * radius, pitch + Math.sin(angle) * radius);
+      const shot = traceShot(this.map, origin, dir, { speed: weapon.velocity, range: weapon.range }, hitTest);
+      // Send a thinned path: enough for the client to draw the arc.
+      paths.push(shot.points.filter((_, k) => k % 4 === 0 || k === shot.points.length - 1).map(pt));
+      if (shot.hit) anyHit = true;
+      if (shot.hit?.dome) shot.hit.dome.hp -= weapon.damage;
+      else if (shot.hit?.drone) {
+        shot.hit.drone.hp -= weapon.damage;
+        this.sendTo(p, { t: "hit", part: "body", dmg: weapon.damage, kill: shot.hit.drone.hp <= 0, drone: true });
+      } else if (shot.hit) {
+        const prev = hits.get(shot.hit.target) ?? { dmg: 0, part: shot.hit.part };
+        prev.dmg += weapon.damage * weapon.multipliers[shot.hit.part];
+        if (shot.hit.part === "head") prev.part = "head";
+        hits.set(shot.hit.target, prev);
+      } else this.abilities.hitBlockAt(shot.end, weapon.damage);
+    }
+    this.broadcast({ t: "shot", id: p.id, w: p.weapon, path: paths[0], paths: paths.length > 1 ? paths : undefined, v: weapon.velocity, hit: anyHit });
+    for (const [target, h] of hits) this.damage(p, target, Math.round(h.dmg), h.part);
+    // Bolt-action: chamber the next round right away (it also drops you out of the scope).
+    if (weapon.bolt && ammo.mag === 0) this.startReload(p);
   }
 
   // Knife: short ray against hitboxes; hitting someone from behind is lethal.
@@ -451,9 +526,15 @@ export class Room {
   }
 
   damage(attacker, victim, amount, part) {
-    if (!victim.alive) return;
+    if (!victim.alive || this.clock() < victim.protectUntil) return;
     const raw = amount;
     amount = this.abilities.absorb(victim, amount);
+    // Body armor takes two thirds of each hit while it lasts.
+    if (victim.armor > 0) {
+      const soak = Math.min(victim.armor, Math.round(amount * ARMOR_SOAK));
+      victim.armor -= soak;
+      amount -= soak;
+    }
     this.abilities.onDamage(attacker, raw);
     const dealt = Math.min(victim.hp, amount);
     victim.damageFrom.set(attacker.id, (victim.damageFrom.get(attacker.id) ?? 0) + dealt);
@@ -480,12 +561,22 @@ export class Room {
       this.bomb.dropped = { x: victim.body.x, z: victim.body.z };
       this.bomb.dropBy = null;
     }
-    // The best gun falls where they died.
-    const gun = ["rifle", "pistol"].find((id) => victim.ammo[id]);
-    if (gun) this.addGround(gun, victim.ammo[gun], victim.body.x, victim.body.z);
+    // The best gun falls where they died; the rest of the kit is gone.
+    const gun = victim.slots.primary ?? victim.slots.secondary;
+    if (gun && victim.ammo[gun]) this.addGround(gun, victim.ammo[gun], victim.body.x, victim.body.z);
+    victim.slots = { primary: null, secondary: null };
     victim.ammo = {};
+    victim.armor = 0;
+    victim.scoped = 0;
+    if (this.economy) this.earn(attacker, ECONOMY.kill);
+    if (this.mode === "tdm") {
+      this.score[attacker.team] += 1;
+      victim.respawnAt = now + TDM.respawnMs;
+    }
     // An ace is one player taking out the entire enemy team in a round.
-    const ace = attacker.roundKills >= [...this.players.values()].filter((q) => q.team === victim.team).length;
+    const ace = this.mode === "bomb" && attacker.roundKills >= [...this.players.values()].filter((q) => q.team === victim.team).length;
+    // With respawns, multi-kills count per life.
+    if (this.mode === "tdm") victim.roundKills = 0;
     // Assists: the two teammates (other than the killer) who dealt the most damage to the victim.
     const assists = [...victim.damageFrom]
       .filter(([id, dmg]) => id !== attacker.id && dmg > 0 && this.players.get(id)?.team === attacker.team)
@@ -499,6 +590,178 @@ export class Room {
     const mates = [...this.players.values()].filter((q) => q.team === victim.team && q.alive);
     const enemies = [...this.players.values()].filter((q) => q.team !== victim.team && q.alive);
     if (mates.length === 1 && !this.clutch[victim.team]) this.clutch[victim.team] = { id: mates[0].id, vs: enemies.length };
+    if (this.mode === "tdm" && this.score[attacker.team] >= TDM.killTarget) this.finish(attacker.team);
+  }
+
+  // ---------- economy ----------
+
+  // Buy phase in Bomb; a short warmup in Team Deathmatch.
+  buySeconds() {
+    return this.mode === "tdm" ? TDM.warmupSec : RULES.buySec;
+  }
+
+  earn(p, amount) {
+    p.credits = Math.min(ECONOMY.max, p.credits + amount);
+  }
+
+  // Round over: the winners get the win bonus; losers a bonus that grows with their losing streak.
+  payRound(winner) {
+    for (const team of ["red", "blue"]) {
+      const won = team === winner;
+      this.lossStreak[team] = won ? 0 : this.lossStreak[team] + 1;
+      const amount = won ? ECONOMY.win : ECONOMY.loss[Math.min(ECONOMY.loss.length - 1, this.lossStreak[team] - 1)];
+      for (const p of this.teammates(team)) this.earn(p, amount);
+    }
+  }
+
+  // What a player carries into a round. Bomb with economy: survivors keep their guns (ammo
+  // refilled), the fallen start with the free pistol, and a new half wipes everything.
+  outfit(p, newHalf) {
+    if (this.mode === "tdm") return this.equip(p, p.loadout);
+    if (!this.economy) return this.equip(p, { primary: "rifle", secondary: DEFAULT_SECONDARY });
+    if (newHalf) {
+      p.credits = ECONOMY.start;
+      p.armor = 0;
+      p.slots = { primary: null, secondary: null };
+      this.lossStreak = { red: 0, blue: 0 };
+    }
+    this.equip(p, { primary: p.slots.primary, secondary: p.slots.secondary ?? DEFAULT_SECONDARY });
+  }
+
+  equip(p, { primary, secondary }) {
+    p.slots = { primary: primary ?? null, secondary: secondary ?? null };
+    p.ammo = {};
+    for (const id of [primary, secondary]) if (id) p.ammo[id] = fullAmmo(id);
+    p.weapon = p.slots.primary ?? p.slots.secondary ?? "knife";
+    p.reloadUntil = 0;
+    p.spray = 0;
+  }
+
+  // The shop is open during the buy phase in Bomb; in Team Deathmatch it picks your free loadout.
+  shopOpen(p) {
+    if (this.mode === "tdm") return true;
+    return this.economy && this.round.phase === "buy" && p.alive;
+  }
+
+  // item: a gun id, or "light"/"heavy" armor.
+  buy(p, item) {
+    if (!this.shopOpen(p)) return;
+    if (this.mode === "tdm") return this.chooseLoadout(p, item);
+    const armor = ARMOR[item];
+    const weapon = WEAPONS[item];
+    if (armor) {
+      if (armor.points <= p.armor || p.credits < armor.price) return;
+      // Upgrading armor refunds an upgrade bought this round.
+      const earlier = p.purchases.findIndex((x) => ARMOR[x.item]);
+      if (earlier >= 0) p.credits += p.purchases.splice(earlier, 1)[0].price;
+      if (p.credits < armor.price) return;
+      p.purchases.push({ item, price: armor.price, prevArmor: earlier >= 0 ? 0 : p.armor });
+      p.credits -= armor.price;
+      p.armor = armor.points;
+      return this.sendShop(p);
+    }
+    if (!weapon?.gun || !SLOTS.includes(weapon.slot) || p.slots[weapon.slot] === item) return;
+    const slot = weapon.slot;
+    const current = p.slots[slot];
+    // Swapping out a gun bought this round refunds it; a gun owned from before is dropped at
+    // your feet (the free pistol just goes away).
+    const refund = p.purchases.findIndex((x) => x.item === current);
+    const credit = refund >= 0 ? p.purchases[refund].price : 0;
+    if (p.credits + credit < weapon.price) return;
+    if (refund >= 0) {
+      p.credits += credit;
+      p.purchases.splice(refund, 1);
+    } else if (current && WEAPONS[current].price > 0) {
+      this.addGround(current, p.ammo[current], p.body.x, p.body.z, p.id);
+    }
+    delete p.ammo[current];
+    p.credits -= weapon.price;
+    p.purchases.push({ item, price: weapon.price });
+    p.slots[slot] = item;
+    p.ammo[item] = fullAmmo(item);
+    this.switchWeapon(p, item, true);
+    this.sendShop(p);
+  }
+
+  // Undo a purchase made this round, for its full price.
+  sell(p, item) {
+    if (!this.shopOpen(p) || this.mode === "tdm") return;
+    const i = p.purchases.findIndex((x) => x.item === item);
+    if (i < 0) return;
+    const bought = p.purchases.splice(i, 1)[0];
+    p.credits += bought.price;
+    if (ARMOR[item]) p.armor = bought.prevArmor ?? 0;
+    else {
+      // Sold back: the slot empties (a sidearm slot falls back to the free pistol).
+      const slot = WEAPONS[item].slot;
+      delete p.ammo[item];
+      p.slots[slot] = slot === "secondary" ? DEFAULT_SECONDARY : null;
+      if (p.slots[slot]) p.ammo[p.slots[slot]] = fullAmmo(p.slots[slot]);
+      p.weapon = this.bestWeapon(p);
+    }
+    this.sendShop(p);
+  }
+
+  // Team Deathmatch: everything is free; the choice is used from the next spawn (or right away
+  // during warmup).
+  chooseLoadout(p, item) {
+    const weapon = WEAPONS[item];
+    if (!weapon?.gun || !SLOTS.includes(weapon.slot)) return;
+    p.loadout = { ...p.loadout, [weapon.slot]: item };
+    if (this.round.phase === "buy" || (p.alive && this.clock() < p.protectUntil)) this.equip(p, p.loadout);
+    this.sendShop(p);
+  }
+
+  sendShop(p) {
+    this.sendTo(p, { t: "shop", credits: p.credits, armor: p.armor, purchases: p.purchases.map((x) => x.item), loadout: p.loadout });
+  }
+
+  // Bots shop like players: full buy when rich, force with cheap guns after losses, save otherwise.
+  botBuy(p) {
+    const r = this.rng();
+    const c = p.credits;
+    const buy = (...items) => items.forEach((item) => this.buy(p, item));
+    if (c >= 5700 && r < 0.15) return buy("elang", "heavy");
+    if (c >= 4200 && r < 0.12) return buy("gerinda", "heavy");
+    if (c >= 3900) return buy(r < 0.75 ? "rifle" : "tombak", "heavy");
+    if (c >= 3300) return buy("rifle", "light");
+    if (c >= 2650) return buy("tombak", "light");
+    // Pistol round (start of a half): a better sidearm or armor.
+    if (c <= ECONOMY.start) return buy(r < 0.4 ? "sabit" : r < 0.7 ? "rentet" : "light");
+    // Forcing after a couple of lost rounds; otherwise save for next round.
+    if (this.lossStreak[p.team] >= 2 && c >= 2000) return buy(r < 0.5 ? "tawon" : "gledek", "light");
+    if (c >= 1250 && r < 0.4) return buy("sabit", "light");
+  }
+
+  // Right mouse on a scoped gun: level 0 is unscoped, then each zoom step.
+  setScope(p, { level, on }) {
+    const levels = WEAPONS[p.weapon]?.scope?.length ?? 0;
+    const want = Number.isInteger(level) ? level : on ? 1 : 0;
+    p.scoped = p.alive && !p.reloadUntil ? Math.max(0, Math.min(levels, want)) : 0;
+  }
+
+  // ---------- Team Deathmatch ----------
+
+  // Back in three seconds, at a team spawn as far from the enemy as possible, briefly protected.
+  respawnDue(now) {
+    for (const p of this.players.values()) {
+      if (p.alive || !p.respawnAt || now < p.respawnAt) continue;
+      const enemies = [...this.players.values()].filter((q) => q.alive && q.team !== p.team);
+      const spawns = this.map.spawns[this.sideOf(p.team)];
+      const spot = spawns
+        .map((s) => ({ s, d: Math.min(...enemies.map((e) => Math.hypot(e.body.x - s.x, e.body.z - s.z)), 999) + this.rng() * 6 }))
+        .sort((a, b) => b.d - a.d)[0].s;
+      const towardCenter = Math.atan2(-(this.map.width * 1.5 - spot.x), -(this.map.height * 1.5 - spot.z));
+      p.body = createBody(spot.x, spot.z, towardCenter);
+      p.hp = PLAYER.maxHealth;
+      p.alive = true;
+      p.respawnAt = 0;
+      p.protectUntil = now + TDM.spawnProtectMs;
+      p.damageFrom = new Map();
+      this.equip(p, p.loadout);
+      if (p.brain) p.brain.reset?.();
+      this.broadcast({ t: "respawn", id: p.id });
+    }
   }
 
   // ---------- inventory ----------
@@ -506,11 +769,13 @@ export class Room {
   owns(p, weapon) {
     if (weapon === "knife") return true;
     if (weapon === "bomb") return this.bomb.carrier === p.id;
-    return !!p.ammo[weapon];
+    const slot = WEAPONS[weapon]?.slot;
+    return SLOTS.includes(slot) && p.slots[slot] === weapon;
   }
 
   bestWeapon(p) {
-    return ["rifle", "pistol"].find((id) => p.ammo[id] && p.ammo[id].mag + p.ammo[id].reserve > 0) ?? ["rifle", "pistol"].find((id) => p.ammo[id]) ?? "knife";
+    const guns = [p.slots.primary, p.slots.secondary].filter(Boolean);
+    return guns.find((id) => p.ammo[id] && p.ammo[id].mag + p.ammo[id].reserve > 0) ?? guns[0] ?? "knife";
   }
 
   // Bots hold their best gun; they only fight with the knife when nothing else is left.
@@ -537,7 +802,9 @@ export class Room {
           if (dist > RULES.pickupRange + 0.8 && now >= g.lockUntil) g.lockBy = null;
           continue;
         }
-        if (p.ammo[g.w] || dist > RULES.pickupRange) continue;
+        const slot = WEAPONS[g.w].slot;
+        if (p.slots[slot] || dist > RULES.pickupRange) continue;
+        p.slots[slot] = g.w;
         p.ammo[g.w] = { mag: g.mag, reserve: g.reserve };
         this.ground.splice(i, 1);
         this.sendTo(p, { t: "pickup", w: g.w });
@@ -564,6 +831,8 @@ export class Room {
     const spot = this.throwSpot(p);
     this.addGround(p.weapon, ammo, spot.x, spot.z, p.id);
     delete p.ammo[p.weapon];
+    p.slots[WEAPONS[p.weapon].slot] = null;
+    p.purchases = p.purchases.filter((x) => x.item !== p.weapon);
     p.reloadUntil = 0;
     this.switchWeapon(p, this.bestWeapon(p));
   }
@@ -574,6 +843,9 @@ export class Room {
     if (!weapon.gun || !ammo) return;
     if (!p.alive || p.reloadUntil || ammo.mag >= weapon.magazine || ammo.reserve <= 0) return;
     p.reloadUntil = this.clock() + weapon.reload * 1000;
+    // Working the bolt takes you off the scope; it comes back at the same zoom afterwards.
+    p.resumeScope = weapon.bolt ? p.scoped : 0;
+    p.scoped = 0;
   }
 
   completeReload(p) {
@@ -583,6 +855,8 @@ export class Room {
     ammo.mag += take;
     ammo.reserve -= take;
     p.reloadUntil = 0;
+    if (p.resumeScope) p.scoped = p.resumeScope;
+    p.resumeScope = 0;
   }
 
   switchWeapon(p, weapon, instant = false) {
@@ -590,6 +864,8 @@ export class Room {
     p.weapon = weapon;
     p.reloadUntil = 0;
     p.spray = 0;
+    p.scoped = 0;
+    p.resumeScope = 0;
     p.nextShot = this.clock() + (instant ? 0 : 350);
   }
 
@@ -744,7 +1020,7 @@ export class Room {
       }
     }
     this.round.phase = "buy";
-    this.round.ends = now + RULES.buySec * 1000;
+    this.round.ends = now + this.buySeconds() * 1000;
     this.broadcast({ t: "pick_done", players: this.roster() });
     this.broadcast({ t: "round", n: this.round.n, attack: this.teamOf(SIDES.ATTACK), score: this.score, swap: false, matchPoint: [] });
   }
@@ -788,12 +1064,13 @@ export class Room {
   }
 
   welcome(p) {
-    const welcome = { t: "welcome", room: this.id, you: p.id, team: p.team, map: this.map.id, players: this.roster(p.team), score: this.score, round: this.round.n, phase: this.round.phase };
+    const welcome = { t: "welcome", room: this.id, mode: this.mode, economy: this.economy, you: p.id, team: p.team, map: this.map.id, players: this.roster(p.team), score: this.score, round: this.round.n, phase: this.round.phase };
+    setTimeout(() => this.sendShop(p), 0);
     if (this.round.phase === "pick") setTimeout(() => this.sendPick(), 0);
     return welcome;
   }
 
-  // 1 stealthed, 2 revealed to the viewer's team (scan/sensor), 4 shielded.
+  // 1 stealthed, 2 revealed to the viewer's team (scan/drones), 4 shielded.
   statusFlags(p, viewer, now) {
     const a = p.abil;
     let flags = now < a.stealthUntil ? 1 : 0;
@@ -841,16 +1118,16 @@ export class Room {
       },
     };
     const attackTeam = this.teamOf(SIDES.ATTACK);
-    const ground = this.ground.map((g) => [g.id, WEAPON_ORDER.indexOf(g.w), round2(g.x), round2(g.z)]);
+    const ground = this.ground.map((g) => [g.id, WEAPON_IDS.indexOf(g.w), round2(g.x), round2(g.z)]);
     const players = [...this.players.values()];
     if (players.some((p) => p.socket?.readyState === 1)) this.lastHumanAt = now;
     for (const me of players) {
       if (!me.socket || me.socket.readyState !== 1) continue;
       const ps = players
         .filter((p) => p !== me)
-        .map((p) => [p.id, round2(p.body.x), round2(p.body.y), round2(p.body.z), round3(p.body.yaw), round3(p.body.pitch), p.body.crouch ? 1 : 0, p.alive ? 1 : 0, p.team === me.team ? p.hp : -1, WEAPON_ORDER.indexOf(p.weapon), this.actionFlags(p, me.team === attackTeam), this.statusFlags(p, me, now)]);
+        .map((p) => [p.id, round2(p.body.x), round2(p.body.y), round2(p.body.z), round3(p.body.yaw), round3(p.body.pitch), p.body.crouch ? 1 : 0, p.alive ? 1 : 0, p.team === me.team ? p.hp : -1, WEAPON_IDS.indexOf(p.weapon), this.actionFlags(p, me.team === attackTeam), this.statusFlags(p, me, now)]);
       const ammo = me.ammo[me.weapon] ?? NO_AMMO;
-      const inv = WEAPON_ORDER.filter((id) => this.owns(me, id));
+      const inv = [me.slots.primary, me.slots.secondary, "knife", this.owns(me, "bomb") ? "bomb" : null].filter(Boolean);
       const shared = me.team === attackTeam ? attackView : defendView;
       me.socket.send(
         JSON.stringify({
@@ -870,10 +1147,17 @@ export class Room {
             alive: me.alive,
             w: me.weapon,
             inv,
-            ammo: GUNS.map((id) => (me.ammo[id] ? [me.ammo[id].mag, me.ammo[id].reserve] : null)),
+            ammo: Object.fromEntries(Object.entries(me.ammo).map(([id, a]) => [id, [a.mag, a.reserve]])),
             mag: ammo.mag,
             res: ammo.reserve,
             rl: me.reloadUntil ? me.reloadUntil - now : 0,
+            cr: me.credits,
+            // Purchases this round (sellable), for the shop.
+            pu: me.purchases.map((x) => x.item),
+            ar: me.armor,
+            sc: me.scoped || 0,
+            re: me.respawnAt ? Math.max(0, me.respawnAt - now) : 0,
+            pr: me.protectUntil > now ? me.protectUntil - now : 0,
           },
           ps,
           seen: this.spotted?.[me.team] ?? [],
@@ -910,6 +1194,7 @@ export class Room {
   }
 
   finish(winner) {
+    if (this.over) return;
     this.over = true;
     this.round.phase = "over";
     clearInterval(this.timer);
@@ -918,7 +1203,7 @@ export class Room {
       .map((p) => ({ userId: p.userId, team: p.team, won: p.team === winner, kills: p.kills, deaths: p.deaths, assists: p.assists }));
     const rewards = this.onEnd(this, { winner, results }) ?? {};
     for (const p of this.players.values()) {
-      this.sendTo(p, { t: "match_end", winner, side: this.sideOf(winner), score: this.score, players: this.roster(), reward: rewards[p.userId] ?? null });
+      this.sendTo(p, { t: "match_end", mode: this.mode, winner, side: winner ? this.sideOf(winner) : null, score: this.score, players: this.roster(), reward: rewards[p.userId] ?? null });
     }
   }
 

@@ -106,10 +106,120 @@ export function buildBomb(m) {
   return { group: g, light, hands: { right: new THREE.Vector3(0.09, 0.02, 0.03), left: new THREE.Vector3(-0.09, 0.02, 0.03) } };
 }
 
-export const BUILDERS = { rifle: buildRifle, pistol: buildPistol, knife: buildKnife, bomb: buildBomb };
+// Auto pistol: the sidearm with a longer magazine and a compensator.
+export function buildRentet(m) {
+  const w = buildPistol(m);
+  w.group.add(tube(0.012, 0.04, m.metal, 0, 0.035, -0.18, 8));
+  w.mag.add(box(0.026, 0.07, 0.04, m.polymer, 0, -0.04, 0));
+  w.muzzle = -0.21;
+  return w;
+}
+
+// Revolver: long barrel and a cylinder (the "magazine" for the reload animation).
+export function buildSabit(m) {
+  const g = new THREE.Group();
+  g.add(
+    tube(0.012, 0.2, m.steel, 0, 0.035, -0.15, 10), // barrel
+    box(0.012, 0.03, 0.2, m.metal, 0, 0.055, -0.15), // rib
+    box(0.03, 0.035, 0.08, m.metal, 0, 0.02, 0), // frame
+    box(0.032, 0.11, 0.045, m.tan, 0, -0.05, 0.04, 0.35) // grip
+  );
+  const cylinder = new THREE.Group();
+  cylinder.add(tube(0.024, 0.045, m.steel, 0, 0, 0, 6));
+  cylinder.position.set(0, 0.025, -0.04);
+  g.add(cylinder);
+  return { group: g, mag: cylinder, muzzle: -0.26, hands: { right: new THREE.Vector3(0, -0.05, 0.03), left: new THREE.Vector3(-0.02, -0.06, 0.01) } };
+}
+
+// SMG: short body, vertical magazine, folding stock.
+export function buildTawon(m) {
+  const g = new THREE.Group();
+  g.add(
+    box(0.055, 0.075, 0.28, m.metal, 0, 0.02, -0.05),
+    tube(0.01, 0.12, m.metal, 0, 0.03, -0.25),
+    box(0.03, 0.02, 0.18, m.polymer, 0, 0.065, -0.05),
+    box(0.035, 0.09, 0.04, m.polymer, 0, -0.06, 0.05, 0.3),
+    box(0.02, 0.02, 0.18, m.metal, 0, 0.01, 0.17)
+  );
+  const mag = new THREE.Group();
+  mag.add(box(0.03, 0.16, 0.035, m.polymer, 0, -0.08, 0));
+  mag.position.set(0, -0.02, -0.08);
+  g.add(mag);
+  return { group: g, mag, muzzle: -0.32, hands: { right: new THREE.Vector3(0, -0.05, 0.05), left: new THREE.Vector3(0, -0.09, -0.08) } };
+}
+
+// Pump shotgun: long barrel over a tube magazine, wooden pump and stock.
+export function buildGledek(m) {
+  const g = new THREE.Group();
+  const wood = m.tan;
+  g.add(
+    box(0.06, 0.07, 0.2, m.metal, 0, 0.02, 0), // receiver
+    tube(0.016, 0.55, m.metal, 0, 0.035, -0.37), // barrel
+    tube(0.013, 0.45, m.metal, 0, 0.0, -0.32), // tube magazine
+    box(0.05, 0.08, 0.26, wood, 0, -0.01, 0.2), // stock
+    box(0.035, 0.09, 0.04, wood, 0, -0.06, 0.06, 0.35)
+  );
+  const pump = new THREE.Group();
+  pump.add(box(0.05, 0.05, 0.14, wood, 0, 0, 0));
+  pump.position.set(0, 0.0, -0.28);
+  g.add(pump);
+  return { group: g, mag: pump, muzzle: -0.66, hands: { right: new THREE.Vector3(0, -0.06, 0.06), left: new THREE.Vector3(0, -0.03, -0.28) } };
+}
+
+// Tactical rifle: the rifle without the optic, iron sights and a different furniture color.
+export function buildTombak(m) {
+  const w = buildRifle({ ...m, tan: m.olive });
+  w.group.children.filter((c) => c.position.y >= 0.09).forEach((c) => w.group.remove(c));
+  w.group.add(box(0.012, 0.03, 0.02, m.metal, 0, 0.09, 0.02));
+  return w;
+}
+
+// LMG: heavy barrel, box magazine and a bipod.
+export function buildGerinda(m) {
+  const g = new THREE.Group();
+  g.add(
+    box(0.075, 0.1, 0.4, m.metal, 0, 0.02, -0.05),
+    tube(0.016, 0.38, m.metal, 0, 0.03, -0.45),
+    box(0.08, 0.05, 0.22, m.polymer, 0, 0.06, -0.25), // heat shield
+    box(0.05, 0.1, 0.22, m.polymer, 0, 0, 0.24),
+    box(0.04, 0.1, 0.045, m.polymer, 0, -0.07, 0.07, 0.35)
+  );
+  for (const x of [-0.03, 0.03]) {
+    const leg = box(0.01, 0.12, 0.01, m.metal, x, -0.04, -0.55, 0.4);
+    g.add(leg);
+  }
+  const mag = new THREE.Group();
+  mag.add(box(0.09, 0.1, 0.1, m.olive, 0, 0, 0));
+  mag.position.set(0, -0.06, -0.1);
+  g.add(mag);
+  return { group: g, mag, muzzle: -0.66, hands: { right: new THREE.Vector3(0, -0.07, 0.07), left: new THREE.Vector3(0, -0.02, -0.3) } };
+}
+
+// Sniper: long fluted barrel, big scope, bolt and a cheek rest.
+export function buildElang(m) {
+  const g = new THREE.Group();
+  g.add(
+    box(0.06, 0.08, 0.36, m.olive, 0, 0.01, -0.02),
+    tube(0.013, 0.55, m.metal, 0, 0.03, -0.48),
+    tube(0.02, 0.06, m.metal, 0, 0.03, -0.77, 8),
+    tube(0.03, 0.26, m.polymer, 0, 0.11, -0.05, 14), // scope
+    tube(0.036, 0.04, m.polymer, 0, 0.11, -0.18, 14),
+    tube(0.034, 0.04, m.polymer, 0, 0.11, 0.08, 14),
+    box(0.05, 0.11, 0.26, m.olive, 0, -0.01, 0.26),
+    box(0.035, 0.1, 0.04, m.polymer, 0, -0.06, 0.07, 0.3),
+    box(0.014, 0.014, 0.05, m.steel, 0.04, 0.04, 0.04) // bolt
+  );
+  const mag = new THREE.Group();
+  mag.add(box(0.04, 0.06, 0.08, m.polymer, 0, 0, 0));
+  mag.position.set(0, -0.05, -0.06);
+  g.add(mag);
+  return { group: g, mag, muzzle: -0.8, hands: { right: new THREE.Vector3(0, -0.06, 0.07), left: new THREE.Vector3(0, -0.03, -0.32) } };
+}
+
+export const BUILDERS = { rifle: buildRifle, pistol: buildPistol, knife: buildKnife, bomb: buildBomb, rentet: buildRentet, sabit: buildSabit, tawon: buildTawon, gledek: buildGledek, tombak: buildTombak, gerinda: buildGerinda, elang: buildElang };
 
 // Default real-world lengths (m) used to scale downloaded models.
-const LENGTHS = { rifle: 0.9, pistol: 0.22, knife: 0.3, bomb: 0.24 };
+const LENGTHS = { rifle: 0.9, pistol: 0.22, knife: 0.3, bomb: 0.24, rentet: 0.24, sabit: 0.3, tawon: 0.55, gledek: 1.0, tombak: 0.9, gerinda: 1.05, elang: 1.15 };
 
 // A weapon from models.json when one was loaded, otherwise the built-in model. Loaded models are
 // rotated (spec.rotation, radians) so the barrel points down -z, scaled to spec.length, and placed

@@ -1,7 +1,9 @@
 import { WEAPONS } from "./shared/weapons.js";
 
 // HUD drawn in the DOM over the canvas. Text only goes through textContent.
-const SLOT_ICONS = { rifle: "🎯", pistol: "🔫", knife: "🔪", bomb: "💣" };
+const FAMILY_ICONS = { pistol: "🔫", revolver: "🤠", smg: "🐝", shotgun: "💥", rifle: "🎯", lmg: "⚙️", sniper: "🔭", knife: "🔪", bomb: "💣" };
+const SLOT_ICONS = new Proxy({}, { get: (_, id) => FAMILY_ICONS[WEAPONS[id]?.family] });
+const SLOT_KEYS = { primary: 1, secondary: 2, melee: 3, utility: 4 };
 const CHAT_LINES = 7;
 const CHAT_FADE_MS = 9000;
 
@@ -29,6 +31,8 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
     <div class="fps-prompt" data-prompt><span></span><div class="fps-progress"><div></div></div></div>
     <div class="fps-bombtag" data-bombtag></div>
     <div class="fps-health"><span data-hp>100</span><em class="fps-shield" data-shield></em><div class="fps-bar"><div data-hpbar></div></div></div>
+    <div class="fps-statuses" data-status></div>
+    <div class="fps-aim" data-aim><strong></strong><small></small><button type="button" data-aim-cancel>✕ Cancel</button></div>
     <div class="fps-abilities" data-abilities>
       <div class="fps-ability" data-ab="skill"><span></span><i></i><b>Z</b><small></small></div>
       <div class="fps-ability fps-ability--ult" data-ab="ult"><span></span><i></i><b>X</b><small></small></div>
@@ -43,6 +47,10 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
         <button type="submit" class="fps-chat-send" aria-label="Send">➤</button>
       </form>
     </div>
+    <div class="fps-econ"><span data-credits></span><span data-armor></span></div>
+    <button type="button" class="fps-buyhint" data-buyhint></button>
+    <div class="fps-scope"></div>
+    <div class="fps-respawn" data-respawn><strong data-respawn-time></strong><button type="button" data-respawn-shop>🎒 Change loadout</button></div>
     <div class="fps-dead" data-dead>
       <strong>You were eliminated</strong>
       <span class="fps-spec-name" data-spectate></span>
@@ -215,7 +223,40 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
         if (e.hp !== undefined) item.style.setProperty("--hp", `${Math.max(0, e.hp)}%`);
       }
     },
+    // Bomb: credits and armor; Team Deathmatch: armor only.
+    economy({ credits, armor, showCredits }) {
+      $("credits").textContent = showCredits ? `💰 ${credits ?? 0}` : "";
+      $("armor").textContent = armor > 0 ? `🦺 ${armor}` : "";
+    },
+    buyHint(text) {
+      const el = $("buyhint");
+      el.classList.toggle("is-on", !!text);
+      if (text) el.textContent = text;
+    },
+    onShop(fn) {
+      $("buyhint").addEventListener("click", fn);
+      $("respawn-shop").addEventListener("click", fn);
+    },
+    scope(on) {
+      hud.classList.toggle("is-scoped", on);
+    },
+    respawn(ms) {
+      $("respawn").classList.toggle("is-on", ms > 0);
+      if (ms > 0) $("respawn-time").textContent = `Respawning in ${(ms / 1000).toFixed(1)}s`;
+    },
+    // Team Deathmatch shows kills toward the target instead of attack/defend.
+    setMode(mode, target) {
+      this.mode = mode;
+      this.target = target;
+    },
     score({ red, blue }, attackTeam) {
+      if (this.mode === "tdm") {
+        $("score-red").textContent = red;
+        $("score-blue").textContent = blue;
+        $("side-red").textContent = `/ ${this.target}`;
+        $("side-blue").textContent = `/ ${this.target}`;
+        return;
+      }
       $("score-red").textContent = red;
       $("score-blue").textContent = blue;
       $("side-red").textContent = attackTeam === "red" ? "ATTACK" : "DEFEND";
@@ -262,12 +303,42 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       set("ult", hero.ult.icon, ultReady, ultReady ? "READY" : `${ult}%`, ult / 100, `${hero.ult.name}: ${hero.ult.desc}`);
       hud.classList.toggle("is-stealth", stealth > 0);
     },
+    // Countdown chips above the ability bar.
+    status(chips) {
+      const box = $("status");
+      const key = chips.map((c) => c.id).join();
+      if (box.dataset.key !== key) {
+        box.dataset.key = key;
+        box.replaceChildren(
+          ...chips.map((c) => {
+            const el = document.createElement("div");
+            el.className = `fps-chip-status ${c.tone}`;
+            el.dataset.id = c.id;
+            el.append(document.createElement("b"), document.createElement("span"));
+            el.firstChild.textContent = c.label;
+            return el;
+          })
+        );
+      }
+      chips.forEach((c, i) => (box.children[i].lastChild.textContent = `${(c.ms / 1000).toFixed(1)}s`));
+    },
+    // Deploy hint while aiming a placeable ability (with a cancel button on touch screens).
+    aimHint(ability, touch = false) {
+      const el = $("aim");
+      el.classList.toggle("is-on", !!ability);
+      if (!ability) return;
+      el.querySelector("strong").textContent = `${ability.icon} ${ability.name}`;
+      el.querySelector("small").textContent = touch ? "Aim, then tap the ability or 🔫 to place" : "Click or press the key again to place · Right-click to cancel";
+    },
+    onAimCancel(fn) {
+      $("aim-cancel").addEventListener("click", fn);
+    },
     shield(amount) {
       $("shield").textContent = amount > 0 ? `+${amount}🛡` : "";
     },
     vitals({ hp, weapon, mag, reserve, reloadProgress }) {
       const w = WEAPONS[weapon];
-      $("hp").textContent = hp;
+      $("hp").textContent = Math.round(hp);
       $("hpbar").style.width = `${hp}%`;
       $("hpbar").classList.toggle("is-low", hp <= 30);
       $("weapon").textContent = w?.name ?? "";
@@ -292,7 +363,7 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
           const icon = document.createElement("span");
           icon.textContent = SLOT_ICONS[s.id];
           const label = document.createElement("small");
-          label.textContent = touch ? WEAPONS[s.id].name : `${WEAPONS[s.id].slot} ${WEAPONS[s.id].name}`;
+          label.textContent = touch ? WEAPONS[s.id].name : `${SLOT_KEYS[WEAPONS[s.id].slot]} ${WEAPONS[s.id].name}`;
           b.append(icon, label);
           return b;
         })

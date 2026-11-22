@@ -3,6 +3,7 @@ import { CELL, WALL_HEIGHT, COVER_HEIGHT, PLAYER } from "./shared/physics.js";
 import { perf } from "../three/perf.js";
 import { wallTexture, floorTexture, coverTexture, siteDecal, floorOcclusion, bulletHoleTexture } from "./textures.js";
 import { weaponMaterials, makeWeapon } from "./models.js";
+import { WEAPONS, WEAPON_IDS } from "./shared/weapons.js";
 import { createHumanKit, Humanoid } from "./humanoid.js";
 import { GltfSoldier } from "./soldier.js";
 import { assets } from "./assets.js";
@@ -119,6 +120,9 @@ export class FpsRenderer {
 
     this.scene = new THREE.Scene();
     this.scene.fog = new THREE.Fog(map.theme.fog, 35, 120);
+    this.baseFog = [35, 120];
+    this.fogColor = new THREE.Color(map.theme.fog);
+    this.smokeFogColor = new THREE.Color(0xa7acb4);
     this.camera = new THREE.PerspectiveCamera(75, 1, 0.05, 200);
     this.camera.rotation.order = "YXZ";
     this.scene.add(this.camera);
@@ -323,9 +327,16 @@ export class FpsRenderer {
       pistol: new THREE.Vector3(0.15, -0.17, -0.42),
       knife: new THREE.Vector3(0.21, -0.2, -0.38),
       bomb: new THREE.Vector3(0.06, -0.25, -0.46),
+      rentet: new THREE.Vector3(0.15, -0.17, -0.42),
+      sabit: new THREE.Vector3(0.15, -0.17, -0.44),
+      tawon: new THREE.Vector3(0.17, -0.19, -0.42),
+      gledek: new THREE.Vector3(0.18, -0.2, -0.44),
+      tombak: new THREE.Vector3(0.19, -0.2, -0.46),
+      gerinda: new THREE.Vector3(0.2, -0.22, -0.46),
+      elang: new THREE.Vector3(0.19, -0.21, -0.46),
     };
     this.viewmodels = {};
-    for (const id of ["rifle", "pistol", "knife", "bomb"]) {
+    for (const id of WEAPON_IDS) {
       const vm = makeWeapon(id, this.weaponMats);
       vm.rest = rest[id];
       vm.group.position.copy(vm.rest);
@@ -499,7 +510,7 @@ export class FpsRenderer {
     marker.position.y = PLAYER.height + 0.4;
     marker.visible = false;
     human.root.add(marker);
-    // Shown over enemies a scan or sensor revealed, through walls.
+    // Shown over enemies a scan or scout drone revealed, through walls.
     const revealed = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xff3b3b, depthTest: false, transparent: true, opacity: 0.95 }));
     revealed.scale.set(0.22, 0.22, 1);
     revealed.position.y = PLAYER.height + 0.55;
@@ -546,7 +557,7 @@ export class FpsRenderer {
       keep.add(id);
       let mesh = this.groundMeshes.get(id);
       if (!mesh) {
-        mesh = makeWeapon(w === 0 ? "rifle" : "pistol", this.weaponMats).group;
+        mesh = makeWeapon(WEAPON_IDS[w] ?? "rifle", this.weaponMats).group;
         mesh.rotation.set(0, (id * 1.7) % (Math.PI * 2), Math.PI / 2);
         mesh.scale.setScalar(1.2);
         mesh.traverse((o) => (o.castShadow = true));
@@ -710,15 +721,17 @@ export class FpsRenderer {
   }
 
   muzzle(weapon = "rifle") {
+    const family = WEAPONS[weapon]?.family ?? "rifle";
+    const small = family === "pistol" || family === "revolver";
     this.flash.visible = true;
     this.flash.material.rotation = Math.random() * Math.PI;
-    this.flash.scale.setScalar(weapon === "pistol" ? 0.11 : 0.16 + Math.random() * 0.04);
+    this.flash.scale.setScalar(small ? 0.11 : family === "shotgun" || family === "sniper" ? 0.26 : 0.16 + Math.random() * 0.04);
     this.flashUntil = performance.now() + 40;
     if (this.muzzleLight) {
       this.muzzleLight.position.copy(this.camera.localToWorld(new THREE.Vector3(0.1, -0.05, -0.8)));
       this.muzzleLight.intensity = 6;
     }
-    this.recoil = Math.min(1, this.recoil + (weapon === "pistol" ? 0.6 : 0.45));
+    this.recoil = Math.min(1, this.recoil + ({ pistol: 0.6, revolver: 0.9, shotgun: 1, sniper: 1, smg: 0.35, lmg: 0.4 }[family] ?? 0.45));
     this.ejectShell();
   }
 
@@ -740,6 +753,16 @@ export class FpsRenderer {
 
   hurt() {
     this.hurtAt = performance.now();
+  }
+
+  // Sniper zoom: narrower field of view.
+  setZoom(factor) {
+    const fov = factor > 1 ? 75 / factor : 75;
+    this.zoomed = factor > 1;
+    if (this.camera.fov !== fov) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
   }
 
   // Camera shake from nearby explosions (0..1).
@@ -775,13 +798,20 @@ export class FpsRenderer {
     this.camera.updateMatrixWorld();
     this.sky.position.copy(this.camera.position);
     this.setViewmodel(showGun ? weapon : null);
-    this.vmRoot.visible = showGun;
+    // Scoped in: the scope overlay replaces the gun.
+    this.vmRoot.visible = showGun && !this.zoomed;
     if (showGun) this.animateViewmodel(weapon, { reload: anim.reload ?? null, swing: anim.swing ?? null, draw: anim.draw ?? null, plant: anim.plant ?? null, defuse: anim.defuse ?? null }, t);
     this.handLight.visible = Math.floor(t / 500) % 2 === 0;
     if (this.flash.visible && t > this.flashUntil) this.flash.visible = false;
     if (this.muzzleLight) this.muzzleLight.intensity *= 0.6;
     this.updateEffects(t, dt);
-    this.abilityFx.update(t, dt, this.camera);
+    // Fog closes in inside smoke: a light haze in your own, thick in the enemy's.
+    const smoke = this.abilityFx.update(t, dt, this.camera);
+    const fog = this.scene.fog;
+    const want = smoke === "enemy" ? [0.4, 5] : smoke === "ally" ? [3, 22] : this.baseFog;
+    fog.near += (want[0] - fog.near) * Math.min(1, dt * 10);
+    fog.far += (want[1] - fog.far) * Math.min(1, dt * 10);
+    fog.color.lerp(smoke ? this.smokeFogColor : this.fogColor, Math.min(1, dt * 10));
 
     const r = this.renderer;
     r.setRenderTarget(this.target ?? null);

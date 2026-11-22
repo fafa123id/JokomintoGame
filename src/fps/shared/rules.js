@@ -5,7 +5,8 @@ export const RULES = {
   // Sides swap every swapAfter rounds.
   swapAfter: 5,
   tickRate: 20,
-  buySec: 6,
+  // Buy phase: shop open, players frozen in spawn.
+  buySec: 10,
   roundSec: 100,
   endSec: 5,
   plantSec: 3.5,
@@ -24,6 +25,29 @@ export const RULES = {
   humanCarrierChance: 0.6,
   groundMax: 16,
 };
+
+// Valorant-style economy for Bomb mode.
+export const ECONOMY = {
+  start: 800,
+  max: 9000,
+  win: 3000,
+  // Losing pays more the longer the losing streak.
+  loss: [1900, 2400, 2900],
+  kill: 200,
+  // Every attacker earns this when the bomb goes down, win or lose.
+  plant: 300,
+};
+
+// Team Deathmatch: respawns, first team to the kill target wins (or most kills at the time limit).
+export const TDM = {
+  killTarget: 40,
+  matchSec: 480,
+  respawnMs: 3000,
+  spawnProtectMs: 1500,
+  warmupSec: 6,
+};
+
+export const MODES = ["bomb", "tdm"];
 
 export const TEAMS = ["red", "blue"];
 export const SIDES = { ATTACK: "attack", DEFEND: "defend" };

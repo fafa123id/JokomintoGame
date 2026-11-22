@@ -1,5 +1,6 @@
 import * as THREE from "/asset/vendor/three/three.module.min.js";
 import { makeWeapon } from "./models.js";
+import { WEAPON_IDS } from "./shared/weapons.js";
 import { heroById } from "./shared/heroes.js";
 
 // Tactical soldier built from capsules and boxes with a joint hierarchy: hips -> spine -> chest ->
@@ -9,7 +10,7 @@ import { heroById } from "./shared/heroes.js";
 const TEAM = { red: 0x8c2f28, blue: 0x2a4f8c };
 const UP = new THREE.Vector3(0, 1, 0);
 const STRIDE = 1.5;
-const WEAPON_INDEX = ["rifle", "pistol", "knife", "bomb"];
+const WEAPON_INDEX = WEAPON_IDS;
 
 export function createHumanKit(weaponMats) {
   const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 4, 10);

@@ -11,7 +11,8 @@ import { loadModels, modelsReady } from "./assets.js";
 
 // Jokoman 5v5: lobby, matchmaking screen, the match itself and the result screen.
 const MODES = [
-  { id: "bomb", icon: "💣", name: "Bomb", hint: "Plant or defuse · first to 10 rounds · swap every 5", ready: true },
+  { id: "bomb", icon: "💣", name: "Bomb", hint: "Plant or defuse · buy guns · first to 10 rounds", ready: true },
+  { id: "tdm", icon: "⚔️", name: "Team Deathmatch", hint: "Respawns · free loadout · first to 40 kills", ready: true },
   { id: "hostage", icon: "🧑‍🤝‍🧑", name: "Hostage", hint: "Coming soon", ready: false },
   { id: "ranked", icon: "🏆", name: "Ranked", hint: "Coming soon", ready: false },
   { id: "custom", icon: "🛠️", name: "Custom lobby", hint: "Coming soon", ready: false },
@@ -23,6 +24,7 @@ let game = null;
 let retries = 0;
 let wantQueue = false;
 let closing = false;
+let selectedMode = "bomb";
 
 const el = (html) => {
   const t = document.createElement("template");
@@ -54,17 +56,23 @@ function lobby(message = "") {
       <p class="fps-note" data-note></p>
       <details class="fps-howto">
         <summary>Controls</summary>
-        <p>${isTouchDevice() ? "Left thumb: move · Drag right side: aim · 🔫 shoot (drag to aim while shooting) · ⤒ jump · ⤓ crouch · ↻ reload · weapon bar to switch · skill/ultimate buttons · 💣 hold to plant/defuse · 💬 chat · ☰ menu" : "WASD move · Mouse aim · Click shoot · R reload · Q/E, scroll or 1-4 weapons · G drop weapon · Z skill · X ultimate · F hold to plant/defuse · Space jump · " + (navigator.keyboard?.lock ? "Ctrl/C crouch (fullscreen)" : "C crouch") + " · Shift walk · Tab scoreboard · Enter chat · Esc menu"}</p>
+        <p>${isTouchDevice() ? "Left thumb: move · Drag right side: aim · 🔫 shoot (drag to aim while shooting) · ⤒ jump · ⤓ crouch · ↻ reload · weapon bar to switch · skill/ultimate buttons · 💣 hold to plant/defuse · 💬 chat · ☰ menu" : "WASD move · Mouse aim · Click shoot · Right-click scope · B buy · R reload · Q/E, scroll or 1-4 weapons · G drop weapon · Z skill · X ultimate · F hold to plant/defuse · Space jump · " + (navigator.keyboard?.lock ? "Ctrl/C crouch (fullscreen)" : "C crouch") + " · Shift walk · Tab scoreboard · Enter chat · Esc menu"}</p>
       </details>
       <button type="button" class="fps-back" data-back>← Back to games</button>
     </div>`);
   view.querySelector(".fps-modes").append(
     ...MODES.map((m) => {
-      const card = el(`<button type="button" class="fps-mode${m.ready ? " is-active" : ""}"><span></span><strong></strong><small></small></button>`);
+      const card = el(`<button type="button" class="fps-mode"><span></span><strong></strong><small></small></button>`);
       card.querySelector("span").textContent = m.icon;
       card.querySelector("strong").textContent = m.name;
       card.querySelector("small").textContent = m.hint;
       card.disabled = !m.ready;
+      card.classList.toggle("is-active", m.id === selectedMode);
+      card.addEventListener("click", () => {
+        selectedMode = m.id;
+        view.querySelectorAll(".fps-mode").forEach((c) => c.classList.remove("is-active"));
+        card.classList.add("is-active");
+      });
       return card;
     })
   );
@@ -88,6 +96,7 @@ function queueScreen(status = {}) {
       <div class="fps-queue">
         <div class="fps-spinner"></div>
         <h2>Finding players</h2>
+        <p class="fps-queue-mode" data-mode></p>
         <p data-count></p>
         <p data-fill></p>
         <button type="button" class="fps-back" data-cancel>Cancel</button>
@@ -99,6 +108,7 @@ function queueScreen(status = {}) {
     setPanel(view);
   }
   view.querySelector("[data-count]").textContent = `${status.waiting ?? 1} / 10 players in queue`;
+  view.querySelector("[data-mode]").textContent = selectedMode === "tdm" ? "⚔️ Team Deathmatch" : "💣 Bomb";
   view.querySelector("[data-fill]").textContent = status.full
     ? "All servers are busy, you're next in line..."
     : `Bots fill the empty slots in ${Math.ceil((status.fillInMs ?? 0) / 1000)}s`;
@@ -106,13 +116,16 @@ function queueScreen(status = {}) {
 
 function endScreen(msg) {
   const won = msg.winner === game?.team;
+  const draw = !msg.winner;
   const players = msg.players;
   sfx.result(won);
   // Bomb mode: the winners' side is called out (match win/lose lines are for Team Deathmatch).
-  if (msg.side) setTimeout(() => announce(msg.side === "attack" ? "attackers-win" : "defenders-win"), 600);
+  // Bomb: the winners' side is called out. Team Deathmatch: match win / match lose.
+  if (msg.mode === "tdm") setTimeout(() => !draw && announce(won ? "match-win" : "match-lose"), 600);
+  else if (msg.side) setTimeout(() => announce(msg.side === "attack" ? "attackers-win" : "defenders-win"), 600);
   const view = el(`
     <div class="fps-end ${won ? "is-win" : "is-lose"}">
-      <h1>${won ? "VICTORY" : "DEFEAT"}</h1>
+      <h1>${draw ? "DRAW" : won ? "VICTORY" : "DEFEAT"}</h1>
       <p class="fps-end-score"><span class="is-red"></span> : <span class="is-blue"></span></p>
       <div class="fps-rewards"></div>
       <table class="fps-table"><thead><tr><th>Player</th><th>K</th><th>D</th><th>A</th></tr></thead><tbody></tbody></table>
@@ -200,7 +213,7 @@ function connect() {
   ws.addEventListener("open", () => {
     retries = 0;
     // On reconnect the server already sends the running match; only ask to queue when not in one.
-    if (wantQueue && !game) send({ t: "queue" });
+    if (wantQueue && !game) send({ t: "queue", mode: selectedMode });
   });
   ws.addEventListener("message", (e) => {
     let msg;
@@ -240,7 +253,7 @@ async function findMatch() {
       await screen.orientation?.lock?.("landscape");
     } catch {}
   }
-  if (ws?.readyState === WebSocket.OPEN) send({ t: "queue" });
+  if (ws?.readyState === WebSocket.OPEN) send({ t: "queue", mode: selectedMode });
   else if (!ws || ws.readyState === WebSocket.CLOSED) connect();
 }
 
