@@ -1,5 +1,6 @@
 import { sendEvent, getGameService } from "../stateManager.js";
-import { refreshPet } from "../api.js";
+import { refreshPet, api, state as appState } from "../api.js";
+import { partyBar, inviteSheet, showInvitePopup, closeInvitePopup, customEntry, customLobby } from "./social.js";
 import { updateContext } from "../components.js";
 import { requireSession } from "../account.js";
 import { FpsGame } from "./game.js";
@@ -9,13 +10,13 @@ import * as sfx from "./audio.js";
 import { announce } from "./announcer.js";
 import { loadModels, modelsReady } from "./assets.js";
 
-// Jokoman 5v5: lobby, matchmaking screen, the match itself and the result screen.
+// Jokoman 5v5: lobby (with party), custom lobbies, matchmaking screen, the match and the result screen.
 const MODES = [
   { id: "bomb", icon: "💣", name: "Bomb", hint: "Plant or defuse · buy guns · first to 10 rounds", ready: true },
   { id: "tdm", icon: "⚔️", name: "Team Deathmatch", hint: "Respawns · free loadout · first to 40 kills", ready: true },
   { id: "hostage", icon: "🧑‍🤝‍🧑", name: "Hostage", hint: "Coming soon", ready: false },
   { id: "ranked", icon: "🏆", name: "Ranked", hint: "Coming soon", ready: false },
-  { id: "custom", icon: "🛠️", name: "Custom lobby", hint: "Coming soon", ready: false },
+  { id: "custom", icon: "🛠️", name: "Custom lobby", hint: "Private room · your teams and rules", ready: true, opens: true },
 ];
 
 let root = null;
@@ -25,6 +26,13 @@ let retries = 0;
 let wantQueue = false;
 let closing = false;
 let selectedMode = "bomb";
+// Party and custom lobby as the server last told us; screen: "main" | "entry" | "custom".
+let party = null;
+let custom = null;
+let screen = "main";
+let pendingAccept = null;
+const myId = () => appState.user?.id ?? null;
+const isLeader = () => !party || party.leader === myId();
 
 const el = (html) => {
   const t = document.createElement("template");
@@ -42,14 +50,63 @@ function setPanel(node) {
   p.hidden = false;
 }
 
+function toast(text, tone = "") {
+  if (!root || !text) return;
+  const t = el(`<div class="fps-toast ${tone === "error" ? "is-error" : ""}" role="status"></div>`);
+  t.textContent = text;
+  root.append(t);
+  setTimeout(() => t.remove(), 2800);
+}
+
+const idle = () => !game && !wantQueue && !panel()?.querySelector(".fps-end");
+
+// The right out-of-match screen for the current state.
+function render(message = "") {
+  if (custom) return showCustom();
+  if (screen === "entry") return showEntry();
+  screen = "main";
+  lobby(message);
+}
+
+function showEntry() {
+  screen = "entry";
+  setPanel(
+    customEntry({
+      inParty: !!party,
+      onCreate: () => send({ t: "lobby_create" }),
+      onJoin: (code) => send({ t: "lobby_join", code }),
+      onBack: () => ((screen = "main"), lobby()),
+    })
+  );
+}
+
+function showCustom() {
+  screen = "custom";
+  const lobbyAction = (action, extra = {}) => send({ t: "lobby", action, ...extra });
+  setPanel(
+    customLobby(custom, myId(), {
+      onSettings: (settings) => lobbyAction("settings", { settings }),
+      onSlot: (target, slot) => lobbyAction("slot", { target, slot }),
+      onKick: (target) => lobbyAction("kick", { target }),
+      onPromote: (target) => lobbyAction("promote", { target }),
+      onInvite: () => inviteSheet(root, "lobby", send),
+      onStart: () => send({ t: "lobby_start" }),
+      onLeave: () => lobbyAction("leave"),
+    })
+  );
+}
+
 function lobby(message = "") {
   wantQueue = false;
+  if (party) selectedMode = party.mode;
+  const leader = isLeader();
   const view = el(`
     <div class="fps-lobby">
       <div class="fps-lobby-head">
         <h1>🔫 Jokoman <span>5v5</span></h1>
         <p>Tactical shooter · bots fill empty slots</p>
       </div>
+      <div data-party></div>
       <div class="fps-modes"></div>
       <div class="fps-maps"><small>Map pool</small><div></div></div>
       <button type="button" class="fps-cta" data-find>Find match</button>
@@ -66,12 +123,14 @@ function lobby(message = "") {
       card.querySelector("span").textContent = m.icon;
       card.querySelector("strong").textContent = m.name;
       card.querySelector("small").textContent = m.hint;
-      card.disabled = !m.ready;
+      card.disabled = !m.ready || (!m.opens && !leader);
       card.classList.toggle("is-active", m.id === selectedMode);
       card.addEventListener("click", () => {
+        if (m.opens) return showEntry();
         selectedMode = m.id;
         view.querySelectorAll(".fps-mode").forEach((c) => c.classList.remove("is-active"));
         card.classList.add("is-active");
+        if (party) send({ t: "party", action: "mode", mode: m.id });
       });
       return card;
     })
@@ -83,8 +142,21 @@ function lobby(message = "") {
       return chip;
     })
   );
+  view.querySelector("[data-party]").replaceWith(
+    partyBar(party, myId(), {
+      onInvite: () => inviteSheet(root, "party", send),
+      onLeave: () => send({ t: "party", action: "leave" }),
+      onKick: (target) => send({ t: "party", action: "kick", target }),
+      onPromote: (target) => send({ t: "party", action: "promote", target }),
+    })
+  );
+  const find = view.querySelector("[data-find]");
+  if (!leader) {
+    find.disabled = true;
+    find.textContent = `Waiting for ${party.members.find((p) => p.id === party.leader)?.name ?? "the leader"}`;
+  } else if (party) find.textContent = `Find match · party of ${party.members.length}`;
   view.querySelector("[data-note]").textContent = message;
-  view.querySelector("[data-find]").addEventListener("click", findMatch);
+  find.addEventListener("click", findMatch);
   view.querySelector("[data-back]").addEventListener("click", close);
   setPanel(view);
 }
@@ -107,8 +179,9 @@ function queueScreen(status = {}) {
     });
     setPanel(view);
   }
-  view.querySelector("[data-count]").textContent = `${status.waiting ?? 1} / 10 players in queue`;
-  view.querySelector("[data-mode]").textContent = selectedMode === "tdm" ? "⚔️ Team Deathmatch" : "💣 Bomb";
+  const mode = status.mode ?? selectedMode;
+  view.querySelector("[data-count]").textContent = `${status.waiting ?? 1} / 10 players in queue${status.party > 1 ? ` · your party of ${status.party}` : ""}`;
+  view.querySelector("[data-mode]").textContent = mode === "tdm" ? "⚔️ Team Deathmatch" : "💣 Bomb";
   view.querySelector("[data-fill]").textContent = status.full
     ? "All servers are busy, you're next in line..."
     : `Bots fill the empty slots in ${Math.ceil((status.fillInMs ?? 0) / 1000)}s`;
@@ -157,7 +230,14 @@ function endScreen(msg) {
         return tr;
       })
   );
-  view.querySelector("[data-again]").addEventListener("click", findMatch);
+  const again = view.querySelector("[data-again]");
+  if (msg.custom) {
+    again.textContent = "Back to lobby";
+    again.addEventListener("click", () => render());
+  } else if (!isLeader()) {
+    again.textContent = "Back to party";
+    again.addEventListener("click", () => lobby());
+  } else again.addEventListener("click", findMatch);
   view.querySelector("[data-back]").addEventListener("click", close);
   stopGame();
   setPanel(view);
@@ -198,8 +278,31 @@ async function startGame(welcome) {
 function leaveMatch() {
   send({ t: "leave" });
   stopGame();
-  lobby();
+  render();
 }
+
+// ---------- invites ----------
+
+function flushAccept() {
+  if (!pendingAccept || ws?.readyState !== WebSocket.OPEN) return;
+  send({ t: "invite_accept", id: pendingAccept });
+  pendingAccept = null;
+}
+
+function acceptInvite(invite) {
+  pendingAccept = invite.id;
+  if (!root || root.hidden) open();
+  else flushAccept();
+}
+
+function onInvite(e) {
+  const invite = e.detail;
+  // Mid-match there's no room for a popup; the server already refuses most of these.
+  if (game) return api("/api/fps/invite/decline", { inviteId: invite.id });
+  showInvitePopup(invite, { onAccept: acceptInvite, onDecline: (inv) => api("/api/fps/invite/decline", { inviteId: inv.id }) });
+}
+
+const CLOSED_TEXT = { declined: "declined your invite", expired: "didn't answer your invite", failed: "couldn't join" };
 
 // ---------- socket ----------
 
@@ -212,6 +315,7 @@ function connect() {
   ws = new WebSocket(url);
   ws.addEventListener("open", () => {
     retries = 0;
+    flushAccept();
     // On reconnect the server already sends the running match; only ask to queue when not in one.
     if (wantQueue && !game) send({ t: "queue", mode: selectedMode });
   });
@@ -222,11 +326,35 @@ function connect() {
     } catch {
       return;
     }
-    if (msg.t === "hello") {
-      if (!game && !wantQueue && !panel().querySelector(".fps-end")) lobby();
-    } else if (msg.t === "welcome") startGame(msg);
-    else if (msg.t === "queue") wantQueue && !game && queueScreen(msg);
-    else if (msg.t === "cancelled") lobby();
+    if (msg.t === "hello" || msg.t === "left") {
+      party = msg.party ?? null;
+      custom = msg.lobby ?? null;
+      if (msg.t === "hello" && idle()) render();
+    } else if (msg.t === "party") {
+      party = msg.party;
+      if (msg.kicked) toast("You were removed from the party", "error");
+      if (idle() && screen === "main") lobby();
+    } else if (msg.t === "lobby") {
+      custom = msg.lobby;
+      if (msg.kicked) toast("The host removed you from the lobby", "error");
+      if (!idle()) return;
+      if (custom) showCustom();
+      else if (screen === "custom") {
+        screen = "main";
+        lobby();
+      }
+    } else if (msg.t === "notice") toast(msg.text, msg.tone);
+    else if (msg.t === "invite_closed") toast(`${msg.name} ${CLOSED_TEXT[msg.reason] ?? "can't join"}`, msg.reason === "declined" ? "error" : "");
+    else if (msg.t === "welcome") startGame(msg);
+    else if (msg.t === "queue") {
+      // Party members are queued by their leader.
+      if (game) return;
+      wantQueue = true;
+      queueScreen(msg);
+    } else if (msg.t === "cancelled") {
+      wantQueue = false;
+      lobby(msg.reason ?? "");
+    }
     else if (msg.t === "match_end") endScreen(msg);
     else game?.handle(msg);
   });
@@ -245,6 +373,7 @@ function connect() {
 async function findMatch() {
   // Already in a match (e.g. rejoined on open): nothing to queue for.
   if (game) return;
+  if (!isLeader()) return lobby();
   wantQueue = true;
   queueScreen();
   if (isTouchDevice()) {
@@ -272,7 +401,7 @@ async function open() {
   loadModels();
   document.documentElement.classList.add("fps-active");
   window.dispatchEvent(new CustomEvent("fps:active", { detail: true }));
-  lobby();
+  render();
   if (!ws || ws.readyState === WebSocket.CLOSED) connect();
 }
 
@@ -301,4 +430,6 @@ export function initFps() {
     if (root && !root.hidden) teardown();
   };
   window.addEventListener("session:replaced", () => root && !root.hidden && teardown());
+  window.addEventListener("rt:fps:invite", onInvite);
+  window.addEventListener("rt:fps:invite:closed", (e) => closeInvitePopup(e.detail?.id));
 }

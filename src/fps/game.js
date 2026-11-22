@@ -48,6 +48,9 @@ export class FpsGame {
     this.ab = { cd: 0, ult: 0, sh: 0, sf: 1, jf: 1, st: 0 };
     this.meId = welcome.you;
     this.team = welcome.team;
+    // Custom lobby spectators watch every player and never play.
+    this.spectator = !!welcome.spectator;
+    this.rules = { roundsToWin: RULES.roundsToWin, killTarget: TDM.killTarget, ...welcome.rules };
     this.players = new Map(welcome.players.map((p) => [p.id, { ...p }]));
     this.body = createBody(0, 0);
     this.prev = copyBody(this.body);
@@ -129,7 +132,8 @@ export class FpsGame {
     this.hud.on("chatSend", (text, all) => this.send({ t: "chat", text, all }));
     this.hud.on("chatClosed", () => this.controls.setTyping(false));
     this.hud.onAimCancel(() => this.cancelAim());
-    this.hud.setMode(this.mode, TDM.killTarget);
+    this.hud.setMode(this.mode, this.rules.killTarget);
+    root.classList.toggle("is-spectator", this.spectator);
     this.hud.onShop(() => this.toggleShop());
     this.hud.score(this.round.score, this.round.attack);
     this.last = performance.now();
@@ -212,11 +216,11 @@ export class FpsGame {
       case "round": {
         const side = msg.attack === this.team ? "ATTACK" : "DEFEND";
         if (this.mode === "tdm") {
-          this.hud.banner("TEAM DEATHMATCH", `First team to ${TDM.killTarget} kills wins · respawns on`, "", 3000);
+          this.hud.banner("TEAM DEATHMATCH", `First team to ${this.rules.killTarget} kills wins · respawns on`, "", 3000);
           sfx.roundStart();
           return;
         }
-        const goal = side === "ATTACK" ? "You attack: plant the bomb 💣" : "You defend: protect the sites 🛡️";
+        const goal = this.spectator ? `Red attacks first · first to ${this.rules.roundsToWin} rounds` : side === "ATTACK" ? "You attack: plant the bomb 💣" : "You defend: protect the sites 🛡️";
         if (msg.swap) {
           this.hud.banner("SWITCHING SIDES", goal, "is-swap", 3200);
           announce("switching-sides");
@@ -516,6 +520,7 @@ export class FpsGame {
 
   // Bomb: during the buy phase while alive. Team Deathmatch: any time (it's the loadout).
   get shopAvailable() {
+    if (this.spectator) return false;
     if (this.mode === "tdm") return this.round.phase !== "pick";
     return this.economy && this.round.phase === "buy" && this.me.alive;
   }
@@ -835,7 +840,7 @@ export class FpsGame {
 
   aliveMates(remote) {
     return [...remote]
-      .filter(([id, s]) => s.alive && this.players.get(id)?.team === this.team)
+      .filter(([id, s]) => s.alive && (this.spectator || this.players.get(id)?.team === this.team))
       .map(([id]) => id)
       .sort((a, b) => a - b);
   }
@@ -1127,10 +1132,10 @@ export class FpsGame {
       if (target) {
         view = this.spectateView(target, this.spec.id, now);
         if (view.hide) this.renderer.hideAvatar(this.spec.id);
-        this.hud.dead(true, { name: this.players.get(this.spec.id)?.name, hp: target.hp, mode: MODE_LABELS[this.spec.mode], count: ids.length, touch: this.controls.touch });
+        this.hud.dead(true, { name: this.players.get(this.spec.id)?.name, hp: target.hp, mode: MODE_LABELS[this.spec.mode], count: ids.length, touch: this.controls.touch, spectator: this.spectator });
       } else {
         view = { x: (this.map.width * CELL) / 2, y: 18, z: (this.map.height * CELL) / 2 + 20, yaw: 0, pitch: -0.75, eye: 0, showGun: false };
-        this.hud.dead(true, null);
+        this.hud.dead(true, this.spectator ? false : null);
       }
     }
     this.root.classList.toggle("is-dead", !this.me.alive);

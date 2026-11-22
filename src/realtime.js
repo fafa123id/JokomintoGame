@@ -9,6 +9,8 @@ const EVENTS = [
   "friends:presence",
   "invite",
   "invite:closed",
+  "fps:invite",
+  "fps:invite:closed",
   "match:start",
   "match:update",
   "match:end",

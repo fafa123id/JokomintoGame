@@ -7,7 +7,7 @@ import gameRoutes from "./game.routes.js";
 import leaderboardRoutes from "./leaderboard.routes.js";
 import skinRoutes from "./skin.routes.js";
 import pushRoutes from "./push.routes.js";
-import { eventRoutes, friendRoutes, matchRoutes } from "./social.routes.js";
+import { eventRoutes, friendRoutes, matchRoutes, fpsRoutes } from "./social.routes.js";
 
 const router = Router();
 
@@ -23,6 +23,7 @@ router.use("/push", pushRoutes);
 router.use("/events", eventRoutes);
 router.use("/friends", friendRoutes);
 router.use("/match", matchRoutes);
+router.use("/fps", fpsRoutes);
 router.use(notFound);
 
 export default router;

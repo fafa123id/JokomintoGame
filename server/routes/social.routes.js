@@ -1,6 +1,7 @@
 import { Router } from "express";
 import * as social from "../controllers/social.controller.js";
 import { requireAuth } from "../middlewares/auth.js";
+import { social as fpsSocial } from "../fps/service.js";
 import { validate } from "../middlewares/validate.js";
 import {
   friendRequestSchema,
@@ -41,3 +42,11 @@ matchRoutes.post("/:id/move", validate(matchMoveSchema), social.move);
 matchRoutes.post("/:id/resign", social.resign);
 
 export { matchRoutes };
+
+// Declining a Jokoman party/lobby invite works from anywhere in the app (no game socket needed).
+export const fpsRoutes = Router()
+  .use(requireAuth)
+  .post("/invite/decline", validate({ inviteId: inviteCancelSchema.inviteId }), (req, res) => {
+    fpsSocial.decline(req.user.id, req.validated.inviteId);
+    res.json({ ok: true });
+  });

@@ -52,7 +52,7 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
     <div class="fps-scope"></div>
     <div class="fps-respawn" data-respawn><strong data-respawn-time></strong><button type="button" data-respawn-shop>🎒 Change loadout</button></div>
     <div class="fps-dead" data-dead>
-      <strong>You were eliminated</strong>
+      <strong data-dead-title>You were eliminated</strong>
       <span class="fps-spec-name" data-spectate></span>
       <small class="fps-spec-help" data-spec-help></small>
     </div>
@@ -460,7 +460,8 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
     dead(on, info = null) {
       $("dead").classList.toggle("is-on", on);
       if (!on) return;
-      $("spectate").textContent = info ? `👁 ${info.name} · ${info.hp > 0 ? info.hp : 0} HP · ${info.mode}` : "No teammates left to watch";
+      $("dead-title").textContent = info?.spectator || info === false ? "Spectating" : "You were eliminated";
+      $("spectate").textContent = info ? `👁 ${info.name} · ${info.hp > 0 ? info.hp : 0} HP · ${info.mode}` : info === false ? "Waiting for the round" : "No teammates left to watch";
       $("spec-help").textContent = !info
         ? ""
         : info.touch

@@ -38,8 +38,17 @@ const pt = (p) => [round2(p.x), round2(p.y), round2(p.z)];
 export class Room {
   // economy: Valorant-style credits and buying (Bomb only); without it everyone gets a rifle and
   // pistol every round (quick tests and practice).
-  constructor({ mapId, humans = [], onEnd = () => {}, clock = () => Date.now(), rng = Math.random, autoTick = true, heroPick = false, mode = "bomb", economy = false }) {
+  // humans may carry a team (parties, custom lobbies); fillBots: false leaves empty slots empty;
+  // rules overrides the win targets (custom lobbies); spectators watch everyone and don't play.
+  constructor({ mapId, humans = [], onEnd = () => {}, clock = () => Date.now(), rng = Math.random, autoTick = true, heroPick = false, mode = "bomb", economy = false, fillBots = true, rules = {}, spectators = [], custom = false }) {
     this.id = crypto.randomUUID();
+    this.custom = custom;
+    this.rules = {
+      roundsToWin: rules.roundsToWin ?? RULES.roundsToWin,
+      swapAfter: rules.swapAfter ?? RULES.swapAfter,
+      killTarget: rules.killTarget ?? TDM.killTarget,
+    };
+    this.spectators = new Map(spectators.map((s) => [s.userId, { ...s, id: 0, spectator: true, team: null, alive: false, body: createBody(0, 0), abil: abilityState(), chatAt: 0 }]));
     this.mode = mode === "tdm" ? "tdm" : "bomb";
     this.economy = economy && this.mode === "bomb";
     this.lossStreak = { red: 0, blue: 0 };
@@ -59,11 +68,13 @@ export class Room {
     this.lastHumanAt = clock();
 
     const teams = { red: [], blue: [] };
-    humans.forEach((h, i) => teams[i % 2 === 0 ? "red" : "blue"].push(h));
+    const free = humans.filter((h) => h.team !== "red" && h.team !== "blue");
+    for (const h of humans) if (h.team === "red" || h.team === "blue") teams[h.team].push(h);
+    for (const h of free) teams[teams.red.length <= teams.blue.length ? "red" : "blue"].push(h);
     let botIndex = 0;
     for (const team of ["red", "blue"]) {
       for (const human of teams[team]) this.addPlayer({ ...human, team, bot: false });
-      while (teams[team].length < RULES.teamSize) {
+      while (fillBots && teams[team].length < RULES.teamSize) {
         teams[team].push(null);
         this.addPlayer({ name: BOT_NAMES[botIndex++ % BOT_NAMES.length], skin: "classic", team, bot: true });
       }
@@ -132,7 +143,7 @@ export class Room {
 
   sideOf(team, n = this.round.n) {
     if (this.mode === "tdm") return team === "red" ? SIDES.ATTACK : SIDES.DEFEND;
-    const redAttacks = Math.floor((Math.max(1, n) - 1) / RULES.swapAfter) % 2 === 0;
+    const redAttacks = Math.floor((Math.max(1, n) - 1) / this.rules.swapAfter) % 2 === 0;
     return (team === "red") === redAttacks ? SIDES.ATTACK : SIDES.DEFEND;
   }
 
@@ -186,7 +197,7 @@ export class Room {
     this.history = [];
     this.abilities.resetRound();
     if (this.economy) for (const p of this.players.values()) if (p.bot || !p.socket) this.botBuy(p);
-    const matchPoint = Object.keys(this.score).filter((team) => this.score[team] === RULES.roundsToWin - 1);
+    const matchPoint = Object.keys(this.score).filter((team) => this.score[team] === this.rules.roundsToWin - 1);
     this.broadcast({ t: "round", n: this.round.n, attack: this.teamOf(SIDES.ATTACK), score: this.score, swap, matchPoint });
   }
 
@@ -220,7 +231,7 @@ export class Room {
       this.respawnDue(now);
       if (now >= round.ends) return this.finish(this.score.red === this.score.blue ? null : this.score.red > this.score.blue ? "red" : "blue");
     } else if (round.phase === "end" && now >= round.ends) {
-      const winner = Object.entries(this.score).find(([, v]) => v >= RULES.roundsToWin)?.[0];
+      const winner = Object.entries(this.score).find(([, v]) => v >= this.rules.roundsToWin)?.[0];
       if (winner) return this.finish(winner);
       this.startRound();
     }
@@ -575,7 +586,8 @@ export class Room {
       victim.respawnAt = now + TDM.respawnMs;
     }
     // An ace is one player taking out the entire enemy team in a round.
-    const ace = this.mode === "bomb" && attacker.roundKills >= [...this.players.values()].filter((q) => q.team === victim.team).length;
+    const enemyCount = [...this.players.values()].filter((q) => q.team === victim.team).length;
+    const ace = this.mode === "bomb" && enemyCount >= 3 && attacker.roundKills >= enemyCount;
     // With respawns, multi-kills count per life.
     if (this.mode === "tdm") victim.roundKills = 0;
     // Assists: the two teammates (other than the killer) who dealt the most damage to the victim.
@@ -591,7 +603,7 @@ export class Room {
     const mates = [...this.players.values()].filter((q) => q.team === victim.team && q.alive);
     const enemies = [...this.players.values()].filter((q) => q.team !== victim.team && q.alive);
     if (mates.length === 1 && !this.clutch[victim.team]) this.clutch[victim.team] = { id: mates[0].id, vs: enemies.length };
-    if (this.mode === "tdm" && this.score[attacker.team] >= TDM.killTarget) this.finish(attacker.team);
+    if (this.mode === "tdm" && this.score[attacker.team] >= this.rules.killTarget) this.finish(attacker.team);
   }
 
   // ---------- economy ----------
@@ -893,6 +905,12 @@ export class Room {
     const clean = text.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, CHAT_MAX);
     if (!clean) return;
     p.chatAt = now;
+    // Spectators talk among themselves only (no calling out positions to the players).
+    if (p.spectator) {
+      const message = { t: "chat", from: 0, name: p.name, team: null, all: false, dead: true, spec: true, text: clean };
+      for (const s of this.spectators.values()) this.sendTo(s, message);
+      return;
+    }
     const message = { t: "chat", from: p.id, name: p.name, team: p.team, all: !!all, dead: !p.alive, text: clean };
     for (const q of this.players.values()) if (all || q.team === p.team) this.sendTo(q, message);
   }
@@ -906,6 +924,7 @@ export class Room {
   broadcast(message) {
     const data = JSON.stringify(message);
     for (const p of this.players.values()) if (p.socket?.readyState === 1) p.socket.send(data);
+    for (const s of this.spectators.values()) if (s.socket?.readyState === 1) s.socket.send(data);
   }
 
   // ---------- hero select ----------
@@ -1048,8 +1067,8 @@ export class Room {
     }
   }
 
-  roster(forTeam = null) {
-    const hidden = this.round.phase === "pick";
+  roster(forTeam = null, everything = false) {
+    const hidden = this.round.phase === "pick" && !everything;
     return [...this.players.values()].map((p) => ({
       id: p.id,
       name: p.name,
@@ -1065,7 +1084,10 @@ export class Room {
   }
 
   welcome(p) {
-    const welcome = { t: "welcome", room: this.id, mode: this.mode, economy: this.economy, you: p.id, team: p.team, map: this.map.id, players: this.roster(p.team), score: this.score, round: this.round.n, phase: this.round.phase };
+    if (p.spectator) {
+      return { t: "welcome", room: this.id, mode: this.mode, economy: this.economy, rules: this.rules, custom: this.custom, spectator: true, you: 0, team: "red", map: this.map.id, players: this.roster(null, true), score: this.score, round: this.round.n, phase: this.round.phase };
+    }
+    const welcome = { rules: this.rules, custom: this.custom, t: "welcome", room: this.id, mode: this.mode, economy: this.economy, you: p.id, team: p.team, map: this.map.id, players: this.roster(p.team), score: this.score, round: this.round.n, phase: this.round.phase };
     setTimeout(() => this.sendShop(p), 0);
     if (this.round.phase === "pick") setTimeout(() => this.sendPick(), 0);
     return welcome;
@@ -1121,7 +1143,7 @@ export class Room {
     const attackTeam = this.teamOf(SIDES.ATTACK);
     const ground = this.ground.map((g) => [g.id, WEAPON_IDS.indexOf(g.w), round2(g.x), round2(g.z)]);
     const players = [...this.players.values()];
-    if (players.some((p) => p.socket?.readyState === 1)) this.lastHumanAt = now;
+    if (players.some((p) => p.socket?.readyState === 1) || [...this.spectators.values()].some((s) => s.socket?.readyState === 1)) this.lastHumanAt = now;
     for (const me of players) {
       if (!me.socket || me.socket.readyState !== 1) continue;
       const ps = players
@@ -1168,11 +1190,28 @@ export class Room {
         })
       );
     }
+    this.sendSpectatorSnapshots(now, players, attackView, ground);
+  }
+
+  // Spectators see everyone (health included) with the attackers' knowledge of the bomb.
+  sendSpectatorSnapshots(now, players, attackView, ground) {
+    const watching = [...this.spectators.values()].filter((s) => s.socket?.readyState === 1);
+    if (!watching.length) return;
+    const ps = players.map((p) => [p.id, round2(p.body.x), round2(p.body.y), round2(p.body.z), round3(p.body.yaw), round3(p.body.pitch), p.body.crouch ? 1 : 0, p.alive ? 1 : 0, p.hp, WEAPON_IDS.indexOf(p.weapon), this.actionFlags(p, true), this.statusFlags(p, { team: null }, now) & ~2]);
+    const seen = [...new Set([...(this.spotted?.red ?? []), ...(this.spotted?.blue ?? [])])];
+    const me = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, yaw: 0, g: 1, hp: 0, alive: false, w: "knife", inv: [], ammo: {}, mag: 0, res: 0, rl: 0, cr: 0, pu: [], ar: 0, sc: 0, re: 0, pr: 0 };
+    const data = JSON.stringify({ t: "snap", tm: now, ack: 0, me, ps, seen, ...this.abilities.snapshotFor(watching[0], now), ground, ...attackView });
+    for (const s of watching) s.socket.send(data);
   }
 
   // ---------- membership ----------
 
   attach(userId, socket) {
+    const spectator = this.spectators.get(userId);
+    if (spectator) {
+      spectator.socket = socket;
+      return spectator;
+    }
     const p = [...this.players.values()].find((x) => x.userId === userId);
     if (!p) return null;
     p.socket = socket;
@@ -1183,6 +1222,8 @@ export class Room {
   }
 
   detach(userId) {
+    const spectator = this.spectators.get(userId);
+    if (spectator) spectator.socket = null;
     const p = [...this.players.values()].find((x) => x.userId === userId);
     if (p) {
       p.socket = null;
@@ -1203,8 +1244,8 @@ export class Room {
       .filter((p) => !p.bot && p.userId)
       .map((p) => ({ userId: p.userId, team: p.team, won: p.team === winner, kills: p.kills, deaths: p.deaths, assists: p.assists }));
     const rewards = this.onEnd(this, { winner, results }) ?? {};
-    for (const p of this.players.values()) {
-      this.sendTo(p, { t: "match_end", mode: this.mode, winner, side: winner ? this.sideOf(winner) : null, score: this.score, players: this.roster(), reward: rewards[p.userId] ?? null });
+    for (const p of [...this.players.values(), ...this.spectators.values()]) {
+      this.sendTo(p, { t: "match_end", mode: this.mode, custom: this.custom, spectator: !!p.spectator, winner, side: winner ? this.sideOf(winner) : null, score: this.score, players: this.roster(), reward: rewards[p.userId] ?? null });
     }
   }
 
