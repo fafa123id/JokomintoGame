@@ -454,7 +454,6 @@ function chooseAbility(room, p, now, out) {
       case "rush":
         if (seen || (attacking && r < 0.15)) return use("ult");
         break;
-      case "slowZone":
       case "vortex":
       case "barrage":
         if (seen && dist > 5) return use("ult", at(seen.body));
@@ -462,9 +461,21 @@ function chooseAbility(room, p, now, out) {
       case "stealth":
         if (attacking && !seen && r < 0.3) return use("ult");
         break;
-      case "revive":
-        if (teammateDown && !seen) return use("ult");
+      case "revive": {
+        // Aim at the closest fallen teammate's body.
+        if (seen) break;
+        const body = room.abilities.fallen
+          .filter((f) => f.team === p.team && !room.players.get(f.id)?.alive && Math.hypot(f.x - p.body.x, f.z - p.body.z) < 35)
+          .sort((a, b) => Math.hypot(a.x - p.body.x, a.z - p.body.z) - Math.hypot(b.x - p.body.x, b.z - p.body.z))[0];
+        if (body) return use("ult", at({ x: body.x, y: 0.3, z: body.z }));
         break;
+      }
+      case "leap": {
+        // Jump in to a teammate who's fighting.
+        const mate = [...room.players.values()].find((q) => q !== p && q.alive && q.team === p.team && q.brain?.target != null && Math.hypot(q.body.x - p.body.x, q.body.z - p.body.z) < 32);
+        if (mate) return use("ult", at({ x: mate.body.x, y: mate.body.y + 1.2, z: mate.body.z }));
+        break;
+      }
       case "dome":
         if (busy || (seen && p.hp < 50)) return use("ult", { y: out.yaw, p: -1.2 });
         break;
@@ -474,6 +485,8 @@ function chooseAbility(room, p, now, out) {
         break;
     }
   }
+  // Steering a shield that's already up: keep it between us and the enemy (no cooldown needed).
+  if (hero.skill.id === "shield" && seen && room.abilities.ownShield(p) && r < 0.5) return use("skill", at(seen.body));
   if (!skill) return null;
   switch (hero.skill.id) {
     case "smoke":
@@ -484,10 +497,11 @@ function chooseAbility(room, p, now, out) {
       if (!seen && brain.goal && r < 0.08) return use("skill", { y: out.yaw, p: -1.2 });
       break;
     case "scouts":
-      if (!seen && r < 0.15) return use("skill", { y: out.yaw, p: 0 });
+      if (!seen && r < 0.15 && !room.abilities.effects.some((e) => e.type === "scout" && e.owner === p.id)) return use("skill", { y: out.yaw, p: 0 });
       break;
     case "wall":
-      if (seen && (hurt || p.hp < 70) && r < 0.5) return use("skill", at(seen.body));
+      // The wall lasts until broken, so don't throw away a standing one for nothing.
+      if (seen && (hurt || p.hp < 70) && r < 0.3) return use("skill", at(seen.body));
       break;
     case "dash":
       if (hurt && r < 0.6) return use("skill");
@@ -495,8 +509,8 @@ function chooseAbility(room, p, now, out) {
     case "grenade":
       if (seen && dist > 5 && dist < 24) return use("skill", at(seen.body, 0.12 + dist * 0.012));
       break;
-    case "pull":
-      if (seen && dist < 17 && r < 0.6) return use("skill", at({ x: seen.body.x, y: seen.body.y + 1.2, z: seen.body.z }));
+    case "stun":
+      if (seen && dist < 20 && r < 0.7) return use("skill", at({ x: seen.body.x, y: seen.body.y + 1.2, z: seen.body.z }));
       break;
     case "heal":
       if (p.hp < 60 && !seen) return use("skill", { y: out.yaw, p: -1 });

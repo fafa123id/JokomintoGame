@@ -380,7 +380,9 @@ test("every skill and ultimate goes off without errors", () => {
       // Laptop abilities take map points; the spot between the two players is open beach.
       const points = [{ x: attacker.body.x, z: attacker.body.z - 6 }];
       const used = room.abilities.use(attacker, slot, { y: 0, p: -0.05, points });
-      assert.ok(used || hero.skill.id === "pull", `${hero.id} ${slot}`);
+      // Abilities that need someone under the crosshair simply don't fire without a target.
+      const needsTarget = ["stun", "leap", "revive"].includes(slot === "skill" ? hero.skill.id : hero.ult.id);
+      assert.ok(used || needsTarget, `${hero.id} ${slot}`);
       assert.doesNotThrow(() => run(env, 4000), `${hero.id} ${slot} ticks`);
       assert.ok(defender.hp <= 100);
     }
@@ -402,6 +404,21 @@ test("abilities: smoke hides, walls block, shields soak, grenades hurt, pulls dr
   env.room.abilities.use(env.attacker, "skill", { y: 0, p: -0.1 });
   assert.equal(env.room.map.blocks.length, 1, "wall raised");
   assert.ok(!lineOfSightTest(env.room, env.attacker, env.defender), "wall blocks the line");
+  const wall = env.room.abilities.effects.find((e) => e.type === "wall");
+  run(env, 20_000);
+  assert.ok(env.room.abilities.effects.includes(wall), "stands until broken");
+  const wallMid = blockMid(wall.block);
+  env.room.abilities.hitBlockAt(wallMid, 500, env.attacker.team);
+  run(env, 100);
+  assert.ok(env.room.abilities.effects.includes(wall), "teammates can't break it");
+  env.attacker.abil.cdUntil = 0;
+  env.room.abilities.use(env.attacker, "skill", { y: Math.PI / 2, p: -0.1 });
+  assert.equal(env.room.abilities.effects.filter((e) => e.type === "wall").length, 1, "a new wall replaces the old");
+  assert.ok(!env.room.abilities.effects.includes(wall));
+  const second = env.room.abilities.effects.find((e) => e.type === "wall");
+  env.room.abilities.hitBlockAt(blockMid(second.block), 500, env.defender.team);
+  run(env, 100);
+  assert.equal(env.room.map.blocks.length, 0, "enemies break it");
 
   env = abilityRoom();
   env.defender.abil.shield = 40;
@@ -418,10 +435,16 @@ test("abilities: smoke hides, walls block, shields soak, grenades hurt, pulls dr
 
   env = abilityRoom();
   env.attacker.hero = "magnet";
-  const before = env.defender.body.z;
+  // The baton has to actually be aimed: thrown wide, it misses.
+  env.room.abilities.use(env.attacker, "skill", { y: 0.4, p: Math.atan2(1.2 - 1.6, 12) });
+  run(env, 900);
+  assert.ok(!env.room.abilities.stunned(env.defender), "a wide throw misses");
+  env.attacker.abil.cdUntil = 0;
   env.room.abilities.use(env.attacker, "skill", { y: 0, p: Math.atan2(1.2 - 1.6, 12) });
-  run(env, 600);
-  assert.ok(env.defender.body.z > before + 2, "pulled toward the caster");
+  assert.ok(!env.room.abilities.stunned(env.defender), "not instant: it has to fly there");
+  run(env, 500);
+  assert.ok(env.room.abilities.stunned(env.defender), "Magnet's baton stuns");
+  assert.equal(env.room.abilities.speedFactor(env.defender), 0);
 
   env = abilityRoom();
   env.attacker.hero = "radar";
@@ -437,7 +460,7 @@ test("abilities: smoke hides, walls block, shields soak, grenades hurt, pulls dr
 
 test("electric dome stuns and burns enemies inside; laser warns before it fires", () => {
   let env = abilityRoom();
-  env.attacker.hero = "tameng";
+  env.attacker.hero = "pagar";
   env.attacker.abil.ult = 100;
   env.defender.body = createBody(env.attacker.body.x, env.attacker.body.z - 5, 0);
   env.room.abilities.use(env.attacker, "ult", { y: 0, p: -0.5 });
@@ -473,10 +496,17 @@ test("Kafein steadies aim; scout drones reveal and can be shot down", () => {
   env.attacker.hero = "lebah";
   env.room.abilities.use(env.attacker, "skill", { y: 0, p: 0 });
   const scouts = env.room.abilities.effects.filter((e) => e.type === "scout");
-  assert.equal(scouts.length, 2);
+  assert.equal(scouts.length, 1);
   run(env, 1000);
-  assert.ok(env.defender.abil.revealUntil > env.room.clock(), "revealed by a scout");
-  // The defender shoots one down.
+  assert.ok(env.defender.abil.revealUntil > env.room.clock(), "revealed by the scout");
+  assert.ok(scouts[0].y > 4, "flies above the walls");
+  assert.equal(scouts[0].track, env.defender.id, "locked on");
+  // It shadows the enemy as they move.
+  env.defender.body.x += 4;
+  run(env, 1500);
+  assert.ok(Math.hypot(scouts[0].x - env.defender.body.x, scouts[0].z - env.defender.body.z) < 3, "follows");
+  assert.ok(env.defender.abil.revealUntil > env.room.clock());
+  // The defender shoots it down.
   const target = scouts[0];
   const d = { x: target.x - env.defender.body.x, y: target.y - 1.6, z: target.z - env.defender.body.z };
   const len = Math.hypot(d.x, d.y, d.z);
@@ -719,6 +749,92 @@ test("Tombak fires a three-round burst per click", () => {
   const shots = env.red.inbox.filter((m) => m.t === "shot" && m.id === p.id);
   assert.equal(shots.length, 3);
 });
+
+test("Jamu revives the body you aim at, where it fell", () => {
+  const env = abilityRoom();
+  const { room, attacker } = env;
+  const mate = room.playersOn("attack").find((p) => p !== attacker);
+  mate.alive = true;
+  mate.body = createBody(attacker.body.x, attacker.body.z - 8, 0);
+  room.damage(env.defender, mate, 200, "body");
+  assert.equal(mate.alive, false);
+  attacker.hero = "jamu";
+  attacker.abil.ult = 100;
+  // Aiming at an empty spot does nothing (and keeps the ultimate).
+  assert.equal(room.abilities.use(attacker, "ult", { y: Math.PI / 2, p: 0 }), false);
+  assert.equal(attacker.abil.ult, 100);
+  const pitch = Math.atan2(0.3 - 1.6, 8);
+  assert.ok(room.abilities.use(attacker, "ult", { y: 0, p: pitch }));
+  assert.equal(mate.alive, true);
+  assert.ok(Math.hypot(mate.body.x - attacker.body.x, mate.body.z - (attacker.body.z - 8)) < 1.3, "back up where they fell");
+  assert.equal(mate.hp, 60);
+});
+
+test("Tameng: the shield moves where you aim; the leap raises a fence allies can walk through", () => {
+  const env = abilityRoom();
+  const { room, attacker } = env;
+  attacker.hero = "tameng";
+  room.abilities.use(attacker, "skill", { y: 0, p: -0.1 });
+  const shield = room.abilities.ownShield(attacker);
+  assert.ok(shield);
+  const cd = attacker.abil.cdUntil;
+  const before = (shield.block.x0 + shield.block.x1) / 2;
+  // Sending it sideways is free while it's up.
+  assert.ok(room.abilities.use(attacker, "skill", { y: Math.PI / 2, p: -0.1 }));
+  assert.equal(attacker.abil.cdUntil, cd);
+  run(env, 1000);
+  assert.ok((shield.block.x0 + shield.block.x1) / 2 < before - 1, "slid toward the new aim");
+  run(env, 3500);
+  assert.equal(room.abilities.ownShield(attacker), undefined, "gone after 4 s");
+
+  // Leap to a teammate, then a fence: enemies collide with it, allies don't.
+  const mate = room.playersOn("attack").find((p) => p !== attacker);
+  mate.alive = true;
+  mate.body = createBody(attacker.body.x, attacker.body.z - 10, 0);
+  attacker.abil.ult = 100;
+  assert.ok(room.abilities.use(attacker, "ult", { y: 0, p: Math.atan2(1.2 - 1.6, 10) }));
+  assert.ok(attacker.body.dashT > 0, "leaping");
+  run(env, 1200);
+  const fence = room.abilities.effects.find((e) => e.type === "fence");
+  assert.ok(fence);
+  const cx = (fence.block.x0 + fence.block.x1) / 2;
+  const cz = (fence.block.z0 + fence.block.z1) / 2;
+  assert.ok(collides(room.map, cx, cz, 0.35, env.defender.team), "blocks the enemy");
+  assert.ok(!collides(room.map, cx, cz, 0.35, attacker.team), "lets allies through");
+});
+
+test("Kabut's laser bogs enemies down; Petasan's grenade is quicker and harder", () => {
+  let env = abilityRoom();
+  env.attacker.hero = "kabut";
+  env.attacker.abil.ult = 100;
+  env.room.abilities.use(env.attacker, "ult", { y: 0, p: 0, points: [{ x: env.defender.body.x, z: env.defender.body.z }] });
+  run(env, 4600);
+  assert.ok(env.room.abilities.speedFactor(env.defender) <= 0.4, "slowed in the zone");
+  const hp = env.defender.hp;
+  run(env, 1000);
+  assert.ok(hp - env.defender.hp >= 35 && hp - env.defender.hp <= 45, `about 40 a second (${hp - env.defender.hp})`);
+
+  env = abilityRoom();
+  env.attacker.hero = "petasan";
+  env.room.abilities.use(env.attacker, "skill", { y: 0, p: -0.3 });
+  run(env, 1050);
+  assert.equal(env.room.abilities.effects.filter((e) => e.type === "grenade").length, 0, "went off within about a second");
+});
+
+test("Magnet's vortex drags, then only lightly slows", () => {
+  const env = abilityRoom();
+  env.attacker.hero = "magnet";
+  env.attacker.abil.ult = 100;
+  env.room.abilities.use(env.attacker, "ult", { y: 0, p: Math.atan2(-1.6, env.attacker.body.z - env.defender.body.z) });
+  const vortex = env.room.abilities.effects.find((e) => e.type === "vortex");
+  env.defender.body = createBody(vortex.x + 3, vortex.z, 0);
+  run(env, 300);
+  assert.equal(env.room.abilities.speedFactor(env.defender), 0.75);
+  run(env, 4200);
+  assert.equal(env.room.abilities.speedFactor(env.defender), 1, "worn off");
+});
+
+const blockMid = (b) => ({ x: (b.x0 + b.x1) / 2, y: 1, z: (b.z0 + b.z1) / 2 });
 
 function lineOfSightTest(room, a, b) {
   return rayWorld(room.map, { x: a.body.x, y: 1.6, z: a.body.z }, { x: 0, y: 0, z: -1 }, a.body.z - b.body.z) >= a.body.z - b.body.z - 0.05;

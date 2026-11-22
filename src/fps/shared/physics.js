@@ -34,14 +34,15 @@ export const isSolid = (map, cx, cz) => SOLID.has(cellAt(map, cx, cz));
 export const toCell = (v) => Math.floor(v / CELL);
 
 // Ability walls and shields: axis-aligned boxes standing on the floor, { x0, z0, x1, z1, h }.
-function hitsBlock(map, x, z, r) {
-  for (const b of map.blocks ?? []) if (x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1) return true;
+// A block with pass = team lets that team walk through (electric fence).
+function hitsBlock(map, x, z, r, team) {
+  for (const b of map.blocks ?? []) if ((!b.pass || b.pass !== team) && x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1) return true;
   return false;
 }
 
 // Axis-aligned square footprint against solid cells.
-export function collides(map, x, z, r = PLAYER.radius) {
-  if (hitsBlock(map, x, z, r)) return true;
+export function collides(map, x, z, r = PLAYER.radius, team = null) {
+  if (hitsBlock(map, x, z, r, team)) return true;
   const minX = toCell(x - r);
   const maxX = toCell(x + r);
   const minZ = toCell(z - r);
@@ -65,7 +66,7 @@ export function createBody(x, z, yaw = 0) {
 // speed scales ground speed (weapon weight, slow zones); jump scales jump height; pads are launch
 // pads [{x, z, r}] this player may use. A dash in progress (body.dashT) overrides movement.
 export const PAD_LAUNCH = 11;
-export function step(map, body, keys, yaw, pitch, dt, { frozen = false, speed: speedScale = 1, jump = 1, pads = null } = {}) {
+export function step(map, body, keys, yaw, pitch, dt, { frozen = false, speed: speedScale = 1, jump = 1, pads = null, team = null } = {}) {
   body.yaw = yaw;
   body.pitch = Math.max(-1.45, Math.min(1.45, pitch));
   body.crouch = !!(keys & KEY.CROUCH);
@@ -97,10 +98,10 @@ export function step(map, body, keys, yaw, pitch, dt, { frozen = false, speed: s
   }
 
   const nx = body.x + body.vx * dt;
-  if (!collides(map, nx, body.z)) body.x = nx;
+  if (!collides(map, nx, body.z, PLAYER.radius, team)) body.x = nx;
   else body.vx = 0;
   const nz = body.z + body.vz * dt;
-  if (!collides(map, body.x, nz)) body.z = nz;
+  if (!collides(map, body.x, nz, PLAYER.radius, team)) body.z = nz;
   else body.vz = 0;
 
   if (!frozen && keys & KEY.JUMP && body.grounded && !body.crouch) {

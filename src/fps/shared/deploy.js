@@ -31,7 +31,7 @@ export function solidAt(map, x, y, z) {
   return (map.blocks ?? []).some((b) => x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < b.h);
 }
 
-export const GRENADE = { speed: 17, lift: 2, gravity: 14, fuse: 1.6, step: 0.05 };
+export const GRENADE = { speed: 17, lift: 2, gravity: 14, fuse: 1.0, step: 0.05 };
 
 export function grenadeStart(body, yaw, pitch) {
   const dir = aimDirection(yaw, pitch + 0.15);

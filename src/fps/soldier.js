@@ -131,7 +131,8 @@ export class GltfSoldier {
         root.rotation.x = (1 - (1 - k) * (1 - k)) * 1.45;
       }
       this.mixer.update(dt);
-      root.visible = now - this.deadAt < 3500;
+      // The body stays where it fell (Jamu can revive it) until the next round or a respawn.
+      root.visible = true;
       return;
     }
     if (this.deadAt) {

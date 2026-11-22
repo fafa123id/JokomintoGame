@@ -1,4 +1,4 @@
-import { step, createBody, PLAYER, CELL, KEY, aimDirection, rayWorld, forwardOf } from "./shared/physics.js";
+import { step, createBody, PLAYER, CELL, KEY, aimDirection, rayWorld, forwardOf, lineOfSight, eyeHeight } from "./shared/physics.js";
 import { Minimap } from "./minimap.js";
 import { MAPS, siteAt } from "./shared/maps.js";
 import { RULES } from "./shared/rules.js";
@@ -211,6 +211,11 @@ export class FpsGame {
       }
       case "round": {
         const side = msg.attack === this.team ? "ATTACK" : "DEFEND";
+        if (this.mode === "tdm") {
+          this.hud.banner("TEAM DEATHMATCH", `First team to ${TDM.killTarget} kills wins · respawns on`, "", 3000);
+          sfx.roundStart();
+          return;
+        }
         const goal = side === "ATTACK" ? "You attack: plant the bomb 💣" : "You defend: protect the sites 🛡️";
         if (msg.swap) {
           this.hud.banner("SWITCHING SIDES", goal, "is-swap", 3200);
@@ -258,6 +263,10 @@ export class FpsGame {
       // Abilities speak through sound and visuals only; no on-screen messages.
       case "laser_warn":
         return sfx.alarm({ pos: { x: msg.x, y: 1, z: msg.z }, seconds: 4.5 });
+      case "zapped":
+        this.renderer.abilityFx.explosion(msg.x, msg.y, msg.z, 0.6);
+        if (Math.hypot(msg.x - this.body.x, msg.z - this.body.z) < 30) sfx.zap();
+        return;
       case "stunned":
         this.renderer.shake(1);
         return sfx.zap();
@@ -306,7 +315,7 @@ export class FpsGame {
     this.seen = new Set(msg.seen);
     this.effects = msg.effects ?? [];
     this.ab = msg.ab ?? this.ab;
-    this.map.blocks = this.effects.filter((e) => e.x0 !== undefined).map((e) => ({ x0: e.x0, z0: e.z0, x1: e.x1, z1: e.z1, h: e.h }));
+    this.map.blocks = this.effects.filter((e) => e.x0 !== undefined).map((e) => ({ x0: e.x0, z0: e.z0, x1: e.x1, z1: e.z1, h: e.h, pass: e.pass }));
     this.renderer.abilityFx.sync(this.effects);
     // Keep an open shop in step with the inventory the server reports.
     this.shop?.update(this.shopView());
@@ -374,7 +383,7 @@ export class FpsGame {
 
   // Movement modifiers the server applies too: weapon weight, slow zones, stealth, Kafein, stuns.
   moveOptions(frozen, weapon) {
-    return { frozen: frozen || this.ab.stun > 0, speed: (WEAPONS[weapon]?.speed ?? 1) * (this.ab.sf ?? 1) };
+    return { frozen: frozen || this.ab.stun > 0, speed: (WEAPONS[weapon]?.speed ?? 1) * (this.ab.sf ?? 1), team: this.team };
   }
 
   // Placeable abilities: the first press shows a preview where you aim, the second press (or a
@@ -384,6 +393,8 @@ export class FpsGame {
     const c = this.controls.state;
     if (!hero || !this.me.alive || this.round.phase !== "live" || c.typing || this.ab.stun > 0) return;
     if (this.aiming?.slot === slot) return this.confirmAim();
+    // Tameng's shield already up: each press sends it to where you aim, straight away.
+    if (slot === "skill" && hero.skill.id === "shield" && this.effects.some((e) => e.type === "barrier" && e.mine)) return this.fireAbility(slot);
     if (slot === "skill" && this.ab.cd > 0) return this.hud.callout("Not ready", `${Math.ceil(this.ab.cd / 1000)}s`, "is-small", 700);
     if (slot === "ult" && this.ab.ult < 100) return this.hud.callout("Ultimate charging", `${this.ab.ult}%`, "is-small", 700);
     const ability = slot === "skill" ? hero.skill : hero.ult;
@@ -398,12 +409,15 @@ export class FpsGame {
 
   confirmAim() {
     if (!this.aiming) return;
-    const { slot } = this.aiming;
+    const { slot, target } = this.aiming;
+    const kind = this.aiming.ability.deploy.kind;
+    // Nobody under the crosshair: keep aiming instead of wasting the press.
+    if ((kind === "ally" || kind === "corpse") && !target) return;
     this.cancelAim();
     // The click that placed it must not also fire the gun.
     this.controls.state.fire = false;
     this.holdFire = true;
-    this.fireAbility(slot);
+    this.fireAbility(slot, {}, target);
   }
 
   cancelAim() {
@@ -423,13 +437,47 @@ export class FpsGame {
     if (deploy.kind === "circle") shape = { kind: "circle", r: deploy.r, at: deployPoint(this.map, this.body, c.yaw, c.pitch, deploy.range) };
     else if (deploy.kind === "wall") shape = { kind: "wall", box: deployWall(this.map, this.body, c.yaw, c.pitch, deploy, deploy.length > 4 ? 0.25 : 0.15, deploy.length > 4 ? 3 : 2) };
     else if (deploy.kind === "arc") shape = { kind: "arc", points: grenadePath(this.map, this.body, c.yaw, c.pitch) };
+    else if (deploy.kind === "ally" || deploy.kind === "corpse") {
+      const target = this.aimedTeammate(deploy.kind === "corpse", deploy.range);
+      this.aiming.target = target;
+      if (target) shape = { kind: "circle", r: 0.9, at: { x: target.x, z: target.z } };
+      this.hud.aimTarget?.(target ? null : deploy.kind === "corpse" ? "Aim at a fallen teammate" : "Aim at a teammate");
+    }
     this.renderer.abilityFx.preview(shape);
   }
 
-  fireAbility(slot, extra = {}) {
+  // The teammate (or teammate's body) nearest the crosshair, matching the server's pick.
+  aimedTeammate(dead, range) {
+    const c = this.controls.state;
+    const eye = { x: this.body.x, y: eyeHeight(this.body), z: this.body.z };
+    const dir = aimDirection(c.yaw, c.pitch);
+    let best = null;
+    for (const [id, s] of this.lastRemote ?? []) {
+      if (this.players.get(id)?.team !== this.team || !!s.alive === dead) continue;
+      const point = { x: s.x, y: dead ? 0.3 : s.y + 1.2, z: s.z };
+      const to = { x: point.x - eye.x, y: point.y - eye.y, z: point.z - eye.z };
+      const dist = Math.hypot(to.x, to.y, to.z);
+      if (dist > range) continue;
+      const cos = (to.x * dir.x + to.y * dir.y + to.z * dir.z) / dist;
+      if (cos < (dead ? 0.94 : 0.95) || (!dead && !lineOfSight(this.map, eye, point))) continue;
+      if (!best || cos > best.cos) best = { id, x: s.x, y: s.y, z: s.z, cos };
+    }
+    return best;
+  }
+
+  fireAbility(slot, extra = {}, target = null) {
     const hero = this.hero;
     const c = this.controls.state;
     this.send({ t: "ability", slot, y: c.yaw, p: c.pitch, ...extra });
+    // Tameng's leap: fly to the teammate the same way the server moves us.
+    if (slot === "ult" && hero.ult.id === "leap" && target) {
+      const dx = target.x - this.body.x;
+      const dz = target.z - this.body.z;
+      const d = Math.hypot(dx, dz) || 1;
+      const travel = Math.max(0, d - 1.2);
+      const time = Math.max(0.3, Math.min(1.1, travel / 20));
+      Object.assign(this.body, { dashT: time, dvx: (dx / d) * (travel / time), dvz: (dz / d) * (travel / time), vy: 6, grounded: false });
+    }
     // Predict our own dash so it feels instant; the server does the same from our last keys.
     if (slot === "skill" && hero.skill.id === "dash") {
       const f = forwardOf(c.yaw);

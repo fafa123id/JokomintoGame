@@ -404,6 +404,7 @@ export class Room {
       frozen: this.round.phase !== "live",
       // Scoped in, you walk slowly.
       speed: WEAPONS[p.weapon].speed * this.abilities.speedFactor(p) * (p.scoped ? 0.7 : 1),
+      team: p.team,
     };
   }
 
@@ -487,7 +488,7 @@ export class Room {
         prev.dmg += weapon.damage * weapon.multipliers[shot.hit.part];
         if (shot.hit.part === "head") prev.part = "head";
         hits.set(shot.hit.target, prev);
-      } else this.abilities.hitBlockAt(shot.end, weapon.damage);
+      } else this.abilities.hitBlockAt(shot.end, weapon.damage, p.team);
     }
     this.broadcast({ t: "shot", id: p.id, w: p.weapon, path: paths[0], paths: paths.length > 1 ? paths : undefined, v: weapon.velocity, hit: anyHit });
     for (const [target, h] of hits) this.damage(p, target, Math.round(h.dmg), h.part);

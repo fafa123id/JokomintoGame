@@ -246,7 +246,8 @@ export class Humanoid {
       root.position.y = (this.last?.y ?? 0) + e * 0.1;
       this.hips.position.y = 0.93 - e * 0.25;
       for (const leg of this.legs) leg.knee.rotation.x = -e * 0.9;
-      root.visible = now - this.deadAt < 3500;
+      // The body stays where it fell (Jamu can revive it) until the next round or a respawn.
+      root.visible = true;
       return;
     }
     if (this.deadAt) {

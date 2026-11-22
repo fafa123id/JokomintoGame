@@ -328,7 +328,13 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       el.classList.toggle("is-on", !!ability);
       if (!ability) return;
       el.querySelector("strong").textContent = `${ability.icon} ${ability.name}`;
-      el.querySelector("small").textContent = touch ? "Aim, then tap the ability or 🔫 to place" : "Click or press the key again to place · Right-click to cancel";
+      el.querySelector("small").textContent = el.querySelector("small").dataset.base = touch ? "Aim, then tap the ability or 🔫 to place" : "Click or press the key again to place · Right-click to cancel";
+    },
+    // Extra line under the deploy hint (e.g. nobody under the crosshair yet).
+    aimTarget(text) {
+      const small = $("aim").querySelector("small");
+      small.classList.toggle("is-warn", !!text);
+      small.textContent = text ?? small.dataset.base ?? "";
     },
     onAimCancel(fn) {
       $("aim-cancel").addEventListener("click", fn);

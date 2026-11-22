@@ -97,6 +97,32 @@ export class EffectsView {
         g.scale.setScalar(0.2);
         break;
       }
+      case "fence": {
+        // Posts with crackling wires: green for your team's fence, red for the enemy's.
+        const long = e.x1 - e.x0 > e.z1 - e.z0;
+        const len = long ? e.x1 - e.x0 : e.z1 - e.z0;
+        const posts = Math.round(len / 2) + 1;
+        for (let i = 0; i < posts; i++) {
+          const post = new THREE.Mesh(this.geo.box, this.mats.dark);
+          post.scale.set(0.12, e.h, 0.12);
+          const t = i / (posts - 1) - 0.5;
+          post.position.set((e.x0 + e.x1) / 2 + (long ? t * len : 0), e.h / 2, (e.z0 + e.z1) / 2 + (long ? 0 : t * len));
+          g.add(post);
+        }
+        parts.wires = [];
+        for (const y of [0.5, 1.2, 1.9, 2.5]) {
+          const wire = new THREE.Mesh(this.geo.box, this.glow(color, 0.85));
+          wire.scale.set(long ? len : 0.04, 0.04, long ? 0.04 : len);
+          wire.position.set((e.x0 + e.x1) / 2, y, (e.z0 + e.z1) / 2);
+          parts.wires.push(wire);
+          g.add(wire);
+        }
+        const field = new THREE.Mesh(this.geo.box, this.glow(color, 0.12));
+        field.scale.set(long ? len : 0.05, e.h, long ? 0.05 : len);
+        field.position.set((e.x0 + e.x1) / 2, e.h / 2, (e.z0 + e.z1) / 2);
+        g.add(field);
+        break;
+      }
       case "wall":
       case "barrier": {
         const wall = e.type === "wall";
@@ -186,6 +212,15 @@ export class EffectsView {
         g.position.set(e.x, 0, e.z);
         break;
       }
+      case "baton": {
+        // A spinning stick of crackling light.
+        const rod = new THREE.Mesh(this.geo.box, this.glow(color, 1));
+        rod.scale.set(0.06, 0.06, 0.6);
+        g.add(rod);
+        parts.rod = rod;
+        g.position.set(e.x, e.y, e.z);
+        break;
+      }
       case "scout":
       case "drone": {
         const body = new THREE.Mesh(this.geo.box, this.mats.dark);
@@ -225,6 +260,13 @@ export class EffectsView {
         this.items.set(e.id, item);
       }
       if (e.x !== undefined) item.target.set(e.x, e.y ?? 0, e.z);
+      // Moving shields: follow the block.
+      if (e.x0 !== undefined && item.parts.mesh) {
+        item.parts.mesh.scale.x = e.x1 - e.x0;
+        item.parts.mesh.scale.z = e.z1 - e.z0;
+        item.parts.mesh.position.x = (e.x0 + e.x1) / 2;
+        item.parts.mesh.position.z = (e.z0 + e.z1) / 2;
+      }
       item.data = e;
     }
     for (const [id, item] of this.items) {
@@ -343,6 +385,10 @@ export class EffectsView {
         p.shell.visible = ally;
         for (const s of p.puffs) s.visible = !inside;
         if (inside) this.insideSmoke = ally ? "ally" : "enemy";
+      } else if (item.type === "baton") {
+        g.position.lerp(item.target, Math.min(1, dt * 20));
+        p.rod.rotation.x += dt * 25;
+        p.rod.material.opacity = 0.6 + Math.random() * 0.4;
       } else if (item.type === "grenade" || item.type === "drone" || item.type === "scout") {
         g.position.lerp(item.target, Math.min(1, dt * 14));
         p.led.visible = Math.floor(t / (item.type === "grenade" ? 120 : 300)) % 2 === 0;
@@ -360,6 +406,8 @@ export class EffectsView {
             b.position.set(Math.cos(b.userData.a) * b.userData.d, 6, Math.sin(b.userData.a) * b.userData.d);
           }
         }
+      } else if (item.type === "fence") {
+        for (const w of p.wires) w.material.opacity = 0.4 + Math.random() * 0.6;
       } else if (item.type === "dome") {
         p.arcs.material.opacity = 0.1 + Math.random() * 0.3;
         p.arcs.rotation.y += dt * 0.8;
