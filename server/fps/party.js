@@ -63,7 +63,7 @@ export class Social {
   }
 
   partyView(party) {
-    return { id: party.id, leader: party.leader, mode: party.mode, members: party.members.map((id) => this.person(id)) };
+    return { id: party.id, leader: party.leader, mode: party.mode, ranked: !!party.ranked, members: party.members.map((id) => this.person(id)) };
   }
 
   lobbyView(lobby) {
@@ -139,7 +139,7 @@ export class Social {
     this.pushParty(party);
   }
 
-  partyAction(userId, { action, target, mode }) {
+  partyAction(userId, { action, target, mode, ranked }) {
     const party = this.partyFor(userId);
     if (!party) return "You're not in a party";
     const leader = party.leader === userId;
@@ -148,6 +148,7 @@ export class Social {
     if (action === "mode") {
       if (!MODES.includes(mode)) return "Unknown mode";
       party.mode = mode;
+      party.ranked = ranked === true;
       this.onPartyChange(party);
     } else if (action === "kick" || action === "promote") {
       if (target === userId || !party.members.includes(target)) return "They're not in your party";

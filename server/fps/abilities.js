@@ -1,6 +1,7 @@
 import { eyeHeight, aimDirection, forwardOf, collides, lineOfSight, smokeBetween, toCell, PLAYER, KEY } from "../../src/fps/shared/physics.js";
 import { deployPoint, deployWall, grenadeStart, grenadeStep, solidAt, validMapPoint } from "../../src/fps/shared/deploy.js";
 import { heroById, ULT } from "../../src/fps/shared/heroes.js";
+import { HOSTAGE } from "../../src/fps/shared/rules.js";
 
 // Hero skills and ultimates, decided on the server. Effects live in this.effects (and walls in
 // room.map.blocks so movement, bullets and sight all respect them); each snapshot carries what a
@@ -472,6 +473,13 @@ export class Abilities {
       const amount = Math.round(dmg * (1 - (d / r) * 0.65));
       if (attacker) room.damage(attacker, e, amount, "body");
     }
+    // Hostages get caught in blasts too (and the thrower pays for it).
+    for (const h of room.hostages ?? []) {
+      if (h.state !== "idle" && h.state !== "carried") continue;
+      const d = Math.hypot(h.body.x - center.x, 1 - center.y, h.body.z - center.z);
+      if (d > r || !lineOfSight(room.map, center, { x: h.body.x, y: 1, z: h.body.z })) continue;
+      room.hurtHostage(attacker, h, dmg * (1 - (d / r) * 0.65));
+    }
     // Explosions shred walls, barriers, domes and drones.
     for (const fx of this.effects) {
       if (fx.team === attacker?.team) continue;
@@ -495,6 +503,8 @@ export class Abilities {
     if (this.effects.some((e) => e.type === "laser" && now >= e.armAt && e.team !== p.team && flat(e, p.body) < e.r)) k *= 0.4;
     else if (now < p.abil.slowUntil) k *= 0.55;
     else if (now < p.abil.dragUntil) k *= 0.75;
+    // Leading a hostage out slows you down.
+    if (this.room.carrying?.(p)) k *= HOSTAGE.carrySpeed;
     else if (this.effects.some((e) => e.type === "slow" && e.team !== p.team && flat(e, p.body) < e.r)) k *= 0.5;
     return k;
   }

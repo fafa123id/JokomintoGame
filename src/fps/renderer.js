@@ -522,6 +522,37 @@ export class FpsRenderer {
     return a;
   }
 
+  // Hostages: unarmed orange figures with a marker above them that shows through walls.
+  // markers: the through-wall marker (defenders only; attackers have to find them).
+  updateHostages(list, dt, { markers = false } = {}) {
+    this.hostages ??= new Map();
+    const knife = WEAPON_IDS.indexOf("knife");
+    for (const [id, x, z, yaw, state] of list) {
+      let h = this.hostages.get(id);
+      if (!h) {
+        const human = new Humanoid(this.kit, "hostage");
+        human.unarmed = true;
+        const marker = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffa94d, depthTest: false, transparent: true, opacity: 0.9 }));
+        marker.scale.set(0.2, 0.2, 1);
+        marker.position.y = PLAYER.height + 0.45;
+        marker.renderOrder = 10;
+        human.root.add(marker);
+        this.scene.add(human.root);
+        h = { human, marker, pos: { x, z } };
+        this.hostages.set(id, h);
+      }
+      // Snap when it reappears after being out of sight; otherwise smooth the 20 Hz updates.
+      const k = h.human.root.visible ? Math.min(1, dt * 12) : 1;
+      h.pos.x += (x - h.pos.x) * k;
+      h.pos.z += (z - h.pos.z) * k;
+      h.human.root.visible = state !== 2;
+      h.marker.visible = markers && (state === 0 || state === 1);
+      h.human.update({ x: h.pos.x, y: 0, z: h.pos.z, yaw, pitch: 0, crouch: false, alive: state !== 3, weapon: knife, act: 0 }, performance.now(), dt);
+    }
+    // Out of sight (or rescued): hidden, not removed, so it doesn't pop in and out of existence.
+    for (const [id, h] of this.hostages) if (!list.some((e) => e[0] === id)) h.human.root.visible = false;
+  }
+
   updateAvatar(player, state, { teammate }) {
     const a = this.avatar(player);
     const now = performance.now();
@@ -833,6 +864,7 @@ export class FpsRenderer {
     for (const item of Object.values(this.fx)) item.dispose?.();
     this.abilityFx.dispose();
     for (const a of this.avatars.values()) a.human.dispose();
+    for (const h of this.hostages?.values() ?? []) h.human.dispose();
     for (const scene of [this.scene, this.vmScene, this.postScene].filter(Boolean)) {
       scene.traverse((o) => {
         o.geometry?.dispose();

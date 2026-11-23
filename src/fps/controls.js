@@ -39,7 +39,7 @@ const LOCKED_KEYS = [
 
 export const isTouchDevice = () => matchMedia("(pointer: coarse)").matches || navigator.maxTouchPoints > 1;
 
-export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onChat, onScoreboard, onLockChange, onPrimary, onSecondary, onWheel, onSpectate, onAbility, onShop }) {
+export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onChat, onScoreboard, onLockChange, onPrimary, onSecondary, onWheel, onSpectate, onAbility, onShop, onHero }) {
   // sens: look sensitivity multiplier (lower while scoped in).
   const state = { yaw: 0, pitch: 0, keys: 0, fire: false, use: false, locked: false, typing: false, sens: 1 };
   const pressed = new Set();
@@ -141,6 +141,8 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
       if (state.typing) return;
       if (!state.locked) {
         if (e.code === "Escape") requestLock();
+        // The hero panel opens and closes with H even while the mouse is free.
+        if (e.code === "KeyH" && !e.repeat) onHero?.();
         return;
       }
       // With the keyboard locked the game owns every key, so browser shortcuts don't fire.
@@ -153,7 +155,7 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
       }
       // Esc (a tap) opens the menu by releasing the mouse; holding it still leaves fullscreen.
       if (e.code === "Escape") return document.exitPointerLock?.();
-      if (e.code === "KeyB" && e.repeat) return;
+      if ((e.code === "KeyB" || e.code === "KeyH") && e.repeat) return;
       if (e.code === "Enter" || e.code === "NumpadEnter") {
         e.preventDefault();
         return onChat?.();
@@ -166,6 +168,7 @@ export function createControls(root, { onReload, onSwitch, onCycle, onDrop, onCh
       if (e.code === "KeyE") onCycle?.(1);
       if (e.code === "KeyG") onDrop?.();
       if (e.code === "KeyB") onShop?.();
+      if (e.code === "KeyH") onHero?.();
       if (e.code === "KeyZ") onAbility?.("skill");
       if (e.code === "KeyX") onAbility?.("ult");
       if (e.code === "KeyF") state.use = true;

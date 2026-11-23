@@ -47,7 +47,25 @@ export const TDM = {
   warmupSec: 6,
 };
 
-export const MODES = ["bomb", "tdm"];
+// Hostage: two hostages wait on the defenders' sites; attackers win a round by bringing one back
+// to their own spawn. Shooting a hostage costs the shooter credits.
+export const HOSTAGE = {
+  count: 2,
+  hp: 100,
+  // Two hostages to bring out takes longer than a bomb plant.
+  roundSec: 130,
+  grabSec: 2,
+  grabRange: 1.8,
+  // Carrying one slows you down.
+  carrySpeed: 0.85,
+  follow: 1.3,
+  rescueReward: 300,
+  // Hurting a hostage costs the shooter credits per point of damage; a kill costs much more.
+  hurtPenaltyPerHp: 10,
+  killPenalty: 1000,
+};
+
+export const MODES = ["bomb", "tdm", "hostage"];
 
 export const TEAMS = ["red", "blue"];
 export const SIDES = { ATTACK: "attack", DEFEND: "defend" };

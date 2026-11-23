@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { step, createBody, eyeHeight, aimDirection, hitboxes, rayBox, rayWorld, lineOfSight, forwardOf, toCell, traceShot, smokeBlocks, PLAYER } from "../../src/fps/shared/physics.js";
 import { WEAPONS, WEAPON_IDS, DEFAULT_SECONDARY, ARMOR, ARMOR_SOAK, SPRAY_RECOVERY } from "../../src/fps/shared/weapons.js";
 import { MAPS, siteAt, isWalkable } from "../../src/fps/shared/maps.js";
-import { RULES, SIDES, ECONOMY, TDM } from "../../src/fps/shared/rules.js";
+import { RULES, SIDES, ECONOMY, TDM, HOSTAGE } from "../../src/fps/shared/rules.js";
 import { createBrain, think, hearShot } from "./bot.js";
 import { Abilities, abilityState } from "./abilities.js";
 import { HEROES, HERO_IDS, PICK_SECONDS, heroById, ULT } from "../../src/fps/shared/heroes.js";
@@ -40,17 +40,20 @@ export class Room {
   // pistol every round (quick tests and practice).
   // humans may carry a team (parties, custom lobbies); fillBots: false leaves empty slots empty;
   // rules overrides the win targets (custom lobbies); spectators watch everyone and don't play.
-  constructor({ mapId, humans = [], onEnd = () => {}, clock = () => Date.now(), rng = Math.random, autoTick = true, heroPick = false, mode = "bomb", economy = false, fillBots = true, rules = {}, spectators = [], custom = false }) {
+  constructor({ mapId, humans = [], onEnd = () => {}, clock = () => Date.now(), rng = Math.random, autoTick = true, heroPick = false, mode = "bomb", economy = false, fillBots = true, rules = {}, spectators = [], custom = false, ranked = false, botLevel = null }) {
     this.id = crypto.randomUUID();
     this.custom = custom;
+    this.ranked = ranked;
+    this.botLevel = botLevel;
     this.rules = {
       roundsToWin: rules.roundsToWin ?? RULES.roundsToWin,
       swapAfter: rules.swapAfter ?? RULES.swapAfter,
       killTarget: rules.killTarget ?? TDM.killTarget,
     };
     this.spectators = new Map(spectators.map((s) => [s.userId, { ...s, id: 0, spectator: true, team: null, alive: false, body: createBody(0, 0), abil: abilityState(), chatAt: 0 }]));
-    this.mode = mode === "tdm" ? "tdm" : "bomb";
-    this.economy = economy && this.mode === "bomb";
+    this.mode = mode === "tdm" || mode === "hostage" ? mode : "bomb";
+    this.economy = economy && this.mode !== "tdm";
+    this.hostages = [];
     this.lossStreak = { red: 0, blue: 0 };
     // Each room gets its own blocks list (ability walls); the grid itself is shared and read-only.
     this.map = { ...MAPS[mapId], blocks: [] };
@@ -89,7 +92,7 @@ export class Room {
     }
   }
 
-  addPlayer({ userId = null, name, skin, team, bot, socket = null }) {
+  addPlayer({ userId = null, name, skin, team, bot, socket = null, rank = null }) {
     const pick = { hero: null, hover: null, locked: false, pickAt: 0, lockAt: 0 };
     const id = this.nextId++;
     this.players.set(id, {
@@ -130,7 +133,9 @@ export class Room {
       deaths: 0,
       assists: 0,
       damageFrom: new Map(),
-      brain: bot ? createBrain(this.rng) : null,
+      brain: bot ? createBrain(this.rng, this.botLevel) : null,
+      rank,
+      objectives: 0,
       // Bots in Team Deathmatch each favour a gun.
       ...(bot ? { loadout: { primary: ["rifle", "rifle", "tombak", "tawon", "gledek", "gerinda", "elang"][Math.floor(this.rng() * 7)], secondary: DEFAULT_SECONDARY } } : {}),
       ...pick,
@@ -195,6 +200,7 @@ export class Room {
     const carrier = this.mode === "bomb" ? pool[Math.floor(this.rng() * pool.length)] : null;
     this.bomb = { carrier: carrier?.id ?? null, dropped: null, planted: null, plantStart: null, defuseStart: null, botSite: this.rng() < 0.5 ? "A" : "B", dropBy: null, dropUntil: 0, revealed: false };
     this.history = [];
+    this.placeHostages();
     this.abilities.resetRound();
     if (this.economy) for (const p of this.players.values()) if (p.bot || !p.socket) this.botBuy(p);
     const matchPoint = Object.keys(this.score).filter((team) => this.score[team] === this.rules.roundsToWin - 1);
@@ -225,7 +231,7 @@ export class Room {
     if (round.phase === "pick") this.updatePick(now);
     else if (round.phase === "buy" && now >= round.ends) {
       round.phase = "live";
-      round.ends = now + (this.mode === "tdm" ? TDM.matchSec : RULES.roundSec) * 1000;
+      round.ends = now + (this.mode === "tdm" ? TDM.matchSec : this.mode === "hostage" ? HOSTAGE.roundSec : RULES.roundSec) * 1000;
       this.broadcast({ t: "live" });
     } else if (this.mode === "tdm" && round.phase === "live") {
       this.respawnDue(now);
@@ -240,7 +246,7 @@ export class Room {
       if (p.reloadUntil && now >= p.reloadUntil) this.completeReload(p);
       if (!p.alive || !(p.bot || !p.socket)) continue;
       // Bots, and humans who dropped out, are driven by the bot brain.
-      p.brain ??= createBrain(this.rng);
+      p.brain ??= createBrain(this.rng, this.botLevel);
       this.armBot(p);
       const input = think(this, p, now);
       step(this.map, p.body, input.keys, input.yaw, input.pitch, TICK_MS / 1000, this.moveOptions(p));
@@ -267,6 +273,7 @@ export class Room {
     this.updateGround(now);
     this.abilities.tick(now, TICK_MS / 1000);
     if (round.phase === "live" && this.mode === "bomb") this.updateBomb(now);
+    if (round.phase === "live" && this.mode === "hostage") this.updateHostages(now);
     this.recordHistory(now);
     this.spotted = this.computeVision();
     this.sendSnapshots(now);
@@ -297,6 +304,7 @@ export class Room {
           bomb.plantStart = null;
           this.holsterBomb(carrier);
           carrier.abil.ult = Math.min(100, carrier.abil.ult + ULT.plant);
+          carrier.objectives += 1;
           // The plant pays every attacker, win or lose.
           if (this.economy) for (const q of attackers) this.earn(q, ECONOMY.plant);
           this.round.ends = bomb.planted.explodeAt;
@@ -313,6 +321,7 @@ export class Room {
         this.abilities.hearDefuse(defuser);
         if (now - bomb.defuseStart.at >= RULES.defuseSec * 1000) {
           defuser.abil.ult = Math.min(100, defuser.abil.ult + ULT.defuse);
+          defuser.objectives += 1;
           this.broadcast({ t: "defused", by: defuser.id });
           return this.endRound(SIDES.DEFEND, "defuse");
         }
@@ -328,6 +337,162 @@ export class Room {
     if (!defendersAlive) return this.endRound(SIDES.ATTACK, "elimination");
     if (!attackersAlive && !bomb.planted) return this.endRound(SIDES.DEFEND, "elimination");
     if (!bomb.planted && now >= this.round.ends) return this.endRound(SIDES.DEFEND, "time");
+  }
+
+  // ---------- hostages ----------
+
+  // Both hostages are kept together on one site (picked each round), a cell or two apart.
+  placeHostages() {
+    this.hostages = [];
+    if (this.mode !== "hostage") return;
+    const site = this.rng() < 0.5 ? "A" : "B";
+    const cells = shuffle(this.map.sites[site], this.rng).filter((c) => this.map.grid[c.z][c.x] === site);
+    const first = cells[0] ?? this.map.sites[site][0];
+    const near = cells.filter((c) => c !== first && Math.abs(c.x - first.x) + Math.abs(c.z - first.z) <= 2);
+    const spots = [first, near[0] ?? cells[1] ?? first].slice(0, HOSTAGE.count);
+    spots.forEach((cell, i) => {
+      const x = (cell.x + 0.5) * 3 + (i && cell === first ? 1 : 0);
+      const z = (cell.z + 0.5) * 3;
+      this.hostages.push({ id: i + 1, site, body: createBody(x, z, this.rng() * Math.PI * 2), hp: HOSTAGE.hp, state: "idle", carrier: null, grab: null, trail: [], killedBy: null, spotted: false, seen: false });
+    });
+  }
+
+  carrying(p) {
+    return this.hostages.find((h) => h.state === "carried" && h.carrier === p.id) ?? null;
+  }
+
+  inRescueZone(p) {
+    const cx = Math.floor(p.body.x / 3);
+    const cz = Math.floor(p.body.z / 3);
+    return this.map.zones.attack.some((c) => c.x === cx && c.z === cz);
+  }
+
+  // A carrier who goes down lets go of everyone they were leading.
+  dropHostage(p) {
+    for (const h of this.hostages) {
+      if (h.state !== "carried" || h.carrier !== p.id) continue;
+      h.state = "idle";
+      h.carrier = null;
+      h.trail = [];
+    }
+  }
+
+  // Attackers only know where a hostage is while one of them can see it (or is leading it);
+  // once seen, the attacking bots remember the spot for the round.
+  updateHostageSight(attackers) {
+    for (const h of this.hostages) {
+      if (h.state === "carried") {
+        h.seen = true;
+        continue;
+      }
+      const head = { x: h.body.x, y: 1.5, z: h.body.z };
+      h.seen = h.state !== "rescued" && attackers.some((p) => p.alive && Math.hypot(p.body.x - h.body.x, p.body.z - h.body.z) <= RULES.visionRange && lineOfSight(this.map, { x: p.body.x, y: eyeHeight(p.body), z: p.body.z }, head));
+      if (h.seen) h.spotted = true;
+    }
+  }
+
+  updateHostages(now) {
+    const attackers = this.playersOn(SIDES.ATTACK);
+    const defenders = this.playersOn(SIDES.DEFEND);
+    this.updateHostageSight(attackers);
+    for (const h of this.hostages) {
+      if (h.state === "idle") {
+        // Hold the use key next to a hostage to get them moving.
+        // One player can lead both hostages, one behind the other.
+        const taker = attackers.find((p) => p.alive && p.using && Math.hypot(p.body.x - h.body.x, p.body.z - h.body.z) <= HOSTAGE.grabRange);
+        if (!taker) h.grab = null;
+        else if (h.grab?.id !== taker.id) h.grab = { id: taker.id, at: now };
+        else if (now - h.grab.at >= HOSTAGE.grabSec * 1000) {
+          Object.assign(h, { state: "carried", carrier: taker.id, grab: null, trail: [{ x: taker.body.x, z: taker.body.z }], spotted: true });
+          this.broadcast({ t: "hostage", event: "taken", id: h.id, by: taker.id });
+        }
+      } else if (h.state === "carried") {
+        const carrier = this.players.get(h.carrier);
+        if (!carrier?.alive) {
+          this.dropHostage(carrier ?? { id: h.carrier });
+          continue;
+        }
+        const line = this.hostages.filter((x) => x.state === "carried" && x.carrier === carrier.id);
+        this.followCarrier(h, carrier, line.indexOf(h) + 1);
+        if (this.inRescueZone(carrier)) {
+          h.state = "rescued";
+          h.carrier = null;
+          carrier.objectives += 1;
+          carrier.abil.ult = Math.min(100, carrier.abil.ult + ULT.plant);
+          if (this.economy) for (const q of attackers) this.earn(q, HOSTAGE.rescueReward);
+          const rescued = this.hostages.filter((x) => x.state === "rescued").length;
+          this.broadcast({ t: "hostage", event: "rescued", id: h.id, by: carrier.id, rescued, total: this.hostages.length });
+        }
+      }
+    }
+    // The round is won once every hostage still alive is out.
+    const alive = this.hostages.filter((h) => h.state !== "dead");
+    if (alive.length && alive.every((h) => h.state === "rescued")) return this.endRound(SIDES.ATTACK, "rescue");
+    // Every hostage gone: the round goes against whoever shot the last one.
+    if (this.hostages.length && !alive.length) {
+      const last = this.hostages.reduce((a, b) => ((b.diedAt ?? 0) > (a.diedAt ?? 0) ? b : a));
+      return this.endRound(this.sideOf(last.killedBy) === SIDES.ATTACK ? SIDES.DEFEND : SIDES.ATTACK, "hostages");
+    }
+    const attackersAlive = attackers.some((p) => p.alive);
+    const defendersAlive = defenders.some((p) => p.alive);
+    if (!defendersAlive) return this.endRound(SIDES.ATTACK, "elimination");
+    if (!attackersAlive) return this.endRound(SIDES.DEFEND, "elimination");
+    if (now >= this.round.ends) return this.endRound(SIDES.DEFEND, "time");
+  }
+
+  // The hostage walks the carrier's own path a step behind, so they never cut through walls.
+  followCarrier(h, carrier, place = 1) {
+    const last = h.trail[h.trail.length - 1];
+    if (!last || Math.hypot(last.x - carrier.body.x, last.z - carrier.body.z) > 0.25) h.trail.push({ x: carrier.body.x, z: carrier.body.z });
+    let target = null;
+    let along = 0;
+    for (let i = h.trail.length - 1; i > 0; i--) {
+      along += Math.hypot(h.trail[i].x - h.trail[i - 1].x, h.trail[i].z - h.trail[i - 1].z);
+      if (along >= HOSTAGE.follow * place) {
+        target = h.trail[i - 1];
+        h.trail.splice(0, i - 1);
+        break;
+      }
+    }
+    if (!target) return;
+    const dx = target.x - h.body.x;
+    const dz = target.z - h.body.z;
+    const d = Math.hypot(dx, dz);
+    const step = Math.min(d, (PLAYER.speed * 1.2) / RULES.tickRate);
+    if (d > 0.01) {
+      h.body.x += (dx / d) * step;
+      h.body.z += (dz / d) * step;
+      h.body.yaw = Math.atan2(-dx, -dz);
+    }
+  }
+
+  // Anyone can hurt a hostage, and it costs them: credits per point of damage, a lot more for a kill.
+  hurtHostage(shooter, h, amount) {
+    if (h.state === "dead" || h.state === "rescued" || !shooter) return;
+    const dealt = Math.min(h.hp, Math.round(amount));
+    if (dealt <= 0) return;
+    h.hp -= dealt;
+    const killed = h.hp <= 0;
+    const cost = dealt * HOSTAGE.hurtPenaltyPerHp + (killed ? HOSTAGE.killPenalty : 0);
+    if (this.economy && shooter.credits !== undefined) shooter.credits = Math.max(0, shooter.credits - cost);
+    this.sendTo(shooter, { t: "hostage_hit", dmg: dealt, cost: this.economy ? cost : 0, kill: killed });
+    if (!killed) return;
+    h.state = "dead";
+    h.diedAt = this.clock();
+    h.killedBy = shooter.team;
+    h.carrier = null;
+    h.trail = [];
+    this.broadcast({ t: "hostage", event: "killed", id: h.id, by: shooter.id, penalty: this.economy ? cost : 0 });
+  }
+
+  // Hostages as each side may see them: [id, x, z, yaw, state, carrier, pick-up progress, picker].
+  // Defenders always know where they are until they're rescued; attackers only while one of
+  // them can see a hostage (or leads it), plus which ones are already out.
+  hostageView(attackSide, now) {
+    const STATES = { idle: 0, carried: 1, rescued: 2, dead: 3 };
+    return this.hostages
+      .filter((h) => (attackSide ? h.state === "rescued" || h.seen : h.state !== "rescued"))
+      .map((h) => [h.id, round2(h.body.x), round2(h.body.z), round3(h.body.yaw), STATES[h.state], h.carrier ?? 0, h.grab ? Math.min(1, (now - h.grab.at) / (HOSTAGE.grabSec * 1000)) : 0, h.grab?.id ?? 0]);
   }
 
   // Which enemies each team can currently see (range + field of view + clear line of sight).
@@ -474,6 +639,13 @@ export class Room {
           if (t !== null && t < (best?.t ?? maxDist)) best = { t, target, part: box.part };
         }
       }
+      for (const h of this.hostages) {
+        if (h.state !== "idle" && h.state !== "carried") continue;
+        for (const box of hitboxes(h.body)) {
+          const t = rayBox(o, d, box.min, box.max);
+          if (t !== null && t < (best?.t ?? maxDist)) best = { t, hostage: h, part: box.part };
+        }
+      }
       return best;
     };
     hearShot(this, p, now);
@@ -491,6 +663,7 @@ export class Room {
       paths.push(shot.points.filter((_, k) => k % 4 === 0 || k === shot.points.length - 1).map(pt));
       if (shot.hit) anyHit = true;
       if (shot.hit?.dome) shot.hit.dome.hp -= weapon.damage;
+      else if (shot.hit?.hostage) this.hurtHostage(p, shot.hit.hostage, weapon.damage * weapon.multipliers[shot.hit.part]);
       else if (shot.hit?.drone) {
         shot.hit.drone.hp -= weapon.damage;
         this.sendTo(p, { t: "hit", part: "body", dmg: weapon.damage, kill: shot.hit.drone.hp <= 0, drone: true });
@@ -568,6 +741,7 @@ export class Room {
     // Multi-kills count per round: 2 = double, 3 = triple, 4 = maniac, 5 = savage.
     attacker.streak = attacker.roundKills;
     attacker.lastKillAt = now;
+    this.dropHostage(victim);
     if (this.bomb.carrier === victim.id) {
       this.bomb.carrier = null;
       this.bomb.dropped = { x: victim.body.x, z: victim.body.z };
@@ -587,7 +761,7 @@ export class Room {
     }
     // An ace is one player taking out the entire enemy team in a round.
     const enemyCount = [...this.players.values()].filter((q) => q.team === victim.team).length;
-    const ace = this.mode === "bomb" && enemyCount >= 3 && attacker.roundKills >= enemyCount;
+    const ace = this.mode !== "tdm" && enemyCount >= 3 && attacker.roundKills >= enemyCount;
     // With respawns, multi-kills count per life.
     if (this.mode === "tdm") victim.roundKills = 0;
     // Assists: the two teammates (other than the killer) who dealt the most damage to the victim.
@@ -760,7 +934,10 @@ export class Room {
     for (const p of this.players.values()) {
       if (p.alive || !p.respawnAt || now < p.respawnAt) continue;
       const enemies = [...this.players.values()].filter((q) => q.alive && q.team !== p.team);
-      const spawns = this.map.spawns[this.sideOf(p.team)];
+      // Never into an enemy's sight when there's a choice.
+      const all = this.map.spawns[this.sideOf(p.team)];
+      const unseen = all.filter((s) => !enemies.some((e) => lineOfSight(this.map, { x: e.body.x, y: eyeHeight(e.body), z: e.body.z }, { x: s.x, y: 1.2, z: s.z })));
+      const spawns = unseen.length ? unseen : all;
       const spot = spawns
         .map((s) => ({ s, d: Math.min(...enemies.map((e) => Math.hypot(e.body.x - s.x, e.body.z - s.z)), 999) + this.rng() * 6 }))
         .sort((a, b) => b.d - a.d)[0].s;
@@ -771,6 +948,7 @@ export class Room {
       p.respawnAt = 0;
       p.protectUntil = now + TDM.spawnProtectMs;
       p.damageFrom = new Map();
+      if (p.nextHero) this.setHero(p, p.nextHero);
       this.equip(p, p.loadout);
       if (p.brain) p.brain.reset?.();
       this.broadcast({ t: "respawn", id: p.id });
@@ -1029,6 +1207,30 @@ export class Room {
     this.sendPick();
   }
 
+  // Team Deathmatch: change hero mid-match. Instant while dead or under spawn protection,
+  // otherwise on the next respawn. Ultimate charge starts over; a bot holding the hero picks another.
+  swapHero(p, heroId) {
+    if (this.mode !== "tdm" || p.bot || this.over || this.round.phase === "pick" || !HERO_IDS.includes(heroId)) return;
+    if (heroId === p.hero) {
+      p.nextHero = null;
+      return this.sendTo(p, { t: "hero_swap", hero: heroId, now: true });
+    }
+    if (this.teammates(p.team).some((q) => q !== p && !q.bot && (q.hero === heroId || q.nextHero === heroId))) {
+      return this.sendTo(p, { t: "hero_swap", error: "A teammate is playing that hero" });
+    }
+    for (const q of this.teammates(p.team)) if (q.bot && q.hero === heroId) this.setHero(q, this.botChoice(q, heroId));
+    if (!p.alive || this.clock() < p.protectUntil) return this.setHero(p, heroId);
+    p.nextHero = heroId;
+    this.sendTo(p, { t: "hero_swap", hero: heroId, now: false });
+  }
+
+  setHero(p, heroId) {
+    if (!heroId) return;
+    Object.assign(p, { hero: heroId, hover: heroId, locked: true, nextHero: null });
+    p.abil = abilityState();
+    this.broadcast({ t: "hero", id: p.id, hero: heroId });
+  }
+
   finishPick(now) {
     for (const team of ["red", "blue"]) {
       for (const p of this.teammates(team)) {
@@ -1078,6 +1280,7 @@ export class Room {
       kills: p.kills,
       deaths: p.deaths,
       assists: p.assists,
+      rank: p.rank,
       // Enemy heroes stay secret until the pick is over.
       hero: hidden && p.team !== forTeam ? null : p.hero,
     }));
@@ -1087,7 +1290,7 @@ export class Room {
     if (p.spectator) {
       return { t: "welcome", room: this.id, mode: this.mode, economy: this.economy, rules: this.rules, custom: this.custom, spectator: true, you: 0, team: "red", map: this.map.id, players: this.roster(null, true), score: this.score, round: this.round.n, phase: this.round.phase };
     }
-    const welcome = { rules: this.rules, custom: this.custom, t: "welcome", room: this.id, mode: this.mode, economy: this.economy, you: p.id, team: p.team, map: this.map.id, players: this.roster(p.team), score: this.score, round: this.round.n, phase: this.round.phase };
+    const welcome = { rules: this.rules, custom: this.custom, ranked: this.ranked, t: "welcome", room: this.id, mode: this.mode, economy: this.economy, you: p.id, team: p.team, map: this.map.id, players: this.roster(p.team), score: this.score, round: this.round.n, phase: this.round.phase };
     setTimeout(() => this.sendShop(p), 0);
     if (this.round.phase === "pick") setTimeout(() => this.sendPick(), 0);
     return welcome;
@@ -1142,6 +1345,11 @@ export class Room {
     };
     const attackTeam = this.teamOf(SIDES.ATTACK);
     const ground = this.ground.map((g) => [g.id, WEAPON_IDS.indexOf(g.w), round2(g.x), round2(g.z)]);
+    if (this.mode === "hostage") {
+      attackView.hostages = this.hostageView(true, now);
+      defendView.hostages = this.hostageView(false, now);
+      attackView.rescue = defendView.rescue = { rescued: this.hostages.filter((h) => h.state === "rescued").length, alive: this.hostages.filter((h) => h.state !== "dead").length, total: this.hostages.length };
+    }
     const players = [...this.players.values()];
     if (players.some((p) => p.socket?.readyState === 1) || [...this.spectators.values()].some((s) => s.socket?.readyState === 1)) this.lastHumanAt = now;
     for (const me of players) {
@@ -1190,7 +1398,7 @@ export class Room {
         })
       );
     }
-    this.sendSpectatorSnapshots(now, players, attackView, ground);
+    this.sendSpectatorSnapshots(now, players, defendView.hostages ? { ...attackView, hostages: defendView.hostages } : attackView, ground);
   }
 
   // Spectators see everyone (health included) with the attackers' knowledge of the bomb.
@@ -1242,10 +1450,10 @@ export class Room {
     clearInterval(this.timer);
     const results = [...this.players.values()]
       .filter((p) => !p.bot && p.userId)
-      .map((p) => ({ userId: p.userId, team: p.team, won: p.team === winner, kills: p.kills, deaths: p.deaths, assists: p.assists }));
+      .map((p) => ({ userId: p.userId, team: p.team, won: p.team === winner, kills: p.kills, deaths: p.deaths, assists: p.assists, objectives: p.objectives }));
     const rewards = this.onEnd(this, { winner, results }) ?? {};
     for (const p of [...this.players.values(), ...this.spectators.values()]) {
-      this.sendTo(p, { t: "match_end", mode: this.mode, custom: this.custom, spectator: !!p.spectator, winner, side: winner ? this.sideOf(winner) : null, score: this.score, players: this.roster(), reward: rewards[p.userId] ?? null });
+      this.sendTo(p, { t: "match_end", mode: this.mode, custom: this.custom, ranked: this.ranked, spectator: !!p.spectator, winner, side: winner ? this.sideOf(winner) : null, score: this.score, players: this.roster(), reward: rewards[p.userId] ?? null });
     }
   }
 

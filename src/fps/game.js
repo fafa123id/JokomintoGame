@@ -3,7 +3,7 @@ import { Minimap } from "./minimap.js";
 import { MAPS, siteAt } from "./shared/maps.js";
 import { RULES } from "./shared/rules.js";
 import { WEAPONS, WEAPON_IDS, SPRAY_RECOVERY } from "./shared/weapons.js";
-import { TDM } from "./shared/rules.js";
+import { TDM, HOSTAGE } from "./shared/rules.js";
 import { createShop } from "./shop.js";
 import { FpsRenderer } from "./renderer.js";
 import { createControls } from "./controls.js";
@@ -19,7 +19,7 @@ import { createLaptop } from "./laptop.js";
 // and corrected by the server's acknowledged state; other players are drawn 100 ms in the past,
 // interpolated between snapshots. Shots are only decided by the server.
 const STEP = 1 / 30;
-const REASONS = { elimination: "Team eliminated", time: "Time ran out", defuse: "Bomb defused", explode: "Bomb exploded" };
+const REASONS = { elimination: "Team eliminated", time: "Time ran out", defuse: "Bomb defused", explode: "Bomb exploded", rescue: "Hostage rescued", hostages: "No hostages left" };
 const SWITCH_MS = 350;
 const SWING_MS = 320;
 // Beep interval per blink stage sent by the server (it speeds up as the fuse burns down).
@@ -63,6 +63,7 @@ export class FpsGame {
     this.bomb = {};
     this.me = { hp: 100, alive: true, w: "pistol", mag: WEAPONS.pistol.magazine, res: WEAPONS.pistol.reserve, rl: 0, ammo: {}, inv: ["pistol", "knife"] };
     this.mode = welcome.mode ?? "bomb";
+    this.hostages = [];
     this.economy = !!welcome.economy;
     this.shopState = { credits: 0, armor: 0, purchases: [], loadout: {} };
     this.scoped = 0;
@@ -95,6 +96,7 @@ export class FpsGame {
       onPrimary: () => (this.aiming ? this.confirmAim() : !this.me.alive && this.cycleSpectateMode()),
       onSecondary: () => (this.aiming ? this.cancelAim() : this.toggleScope()),
       onShop: () => this.toggleShop(),
+      onHero: () => this.toggleHeroSwap(),
       onWheel: (dir) => (this.me.alive ? this.cycleWeapon(dir) : this.cycleSpectateTarget(dir)),
       onAbility: (slot) => this.useAbility(slot),
       onSpectate: (action) => (action === "mode" ? this.cycleSpectateMode() : this.cycleSpectateTarget(action === "next" ? 1 : -1)),
@@ -126,6 +128,11 @@ export class FpsGame {
       onHover: (id) => this.send({ t: "hero", action: "hover", id }),
       onLock: (id) => this.send({ t: "hero", action: "lock", id }),
       onUnlock: () => this.send({ t: "hero", action: "unlock" }),
+      onSwap: (id) => {
+        this.send({ t: "hero_swap", id });
+        this.closeHeroSwap();
+      },
+      onClose: () => this.closeHeroSwap(),
     });
     this.heroSelect.hide();
     if (welcome.phase === "pick") this.hud.pause(false);
@@ -134,7 +141,13 @@ export class FpsGame {
     this.hud.onAimCancel(() => this.cancelAim());
     this.hud.setMode(this.mode, this.rules.killTarget);
     root.classList.toggle("is-spectator", this.spectator);
+    if (welcome.ranked) this.hud.leaveWarning("Leaving a ranked match counts as a loss with an extra RP penalty, and ranked locks for 5 minutes.");
+    if (this.mode === "hostage") {
+      const use = root.querySelector("[data-use]");
+      if (use) use.textContent = "✋";
+    }
     this.hud.onShop(() => this.toggleShop());
+    this.hud.onHeroSwap(() => this.toggleHeroSwap());
     this.hud.score(this.round.score, this.round.attack);
     this.last = performance.now();
     this.frame = requestAnimationFrame((t) => this.loop(t));
@@ -157,7 +170,8 @@ export class FpsGame {
   onLockChange(locked) {
     if (locked) this.everLocked = true;
     if (!locked) this.cancelAim();
-    if (this.laptop || this.shop) return;
+    if (locked && this.heroSwapOpen) this.closeHeroSwap();
+    if (this.laptop || this.shop || this.heroSwapOpen) return;
     if (this.round.phase === "pick") return;
     // Losing the mouse while typing in chat isn't a pause.
     if (!this.controls.touch && !this.hud.chatOpen) this.hud.pause(!locked, { first: !this.everLocked });
@@ -193,6 +207,21 @@ export class FpsGame {
           this.hud.callout("BACK IN", "Spawn protection", "is-small", 1000);
         }
         return;
+      case "hero": {
+        this.players.set(msg.id, { ...this.players.get(msg.id), hero: msg.hero, hover: msg.hero });
+        if (msg.id === this.meId) {
+          this.cancelAim();
+          this.nextHero = null;
+          this.hud.callout(`${heroById(msg.hero)?.icon ?? ""} ${heroById(msg.hero)?.name ?? ""}`, "Hero changed", "is-small", 1400);
+        }
+        if (this.heroSwapOpen) this.showHeroSwap();
+        return;
+      }
+      case "hero_swap":
+        if (msg.error) return this.hud.callout("Can't swap", msg.error, "is-small", 1600);
+        this.nextHero = msg.now ? null : msg.hero;
+        if (!msg.now) this.hud.callout(`${heroById(msg.hero)?.icon ?? ""} ${heroById(msg.hero)?.name ?? ""}`, "On your next spawn", "is-small", 1600);
+        return;
       case "pick_done": {
         for (const p of msg.players) this.players.set(p.id, { ...this.players.get(p.id), ...p });
         this.heroSelect.hide();
@@ -220,7 +249,8 @@ export class FpsGame {
           sfx.roundStart();
           return;
         }
-        const goal = this.spectator ? `Red attacks first · first to ${this.rules.roundsToWin} rounds` : side === "ATTACK" ? "You attack: plant the bomb 💣" : "You defend: protect the sites 🛡️";
+        const hostageGoal = side === "ATTACK" ? "You attack: bring a hostage back to your spawn 🧑" : "You defend: keep the hostages 🛡️";
+        const goal = this.mode === "hostage" && !this.spectator ? hostageGoal : this.spectator ? `Red attacks first · first to ${this.rules.roundsToWin} rounds` : side === "ATTACK" ? "You attack: plant the bomb 💣" : "You defend: protect the sites 🛡️";
         if (msg.swap) {
           this.hud.banner("SWITCHING SIDES", goal, "is-swap", 3200);
           announce("switching-sides");
@@ -251,6 +281,10 @@ export class FpsGame {
         }
         return;
       }
+      case "hostage":
+        return this.onHostage(msg);
+      case "hostage_hit":
+        return this.hud.callout(msg.kill ? "YOU KILLED A HOSTAGE" : "Hostage hit", msg.cost ? `-${msg.cost} credits` : "", "is-enemy", 1200);
       case "planted":
         // Defenders aren't told the site; they have to find it.
         if (msg.site) this.hud.banner(`Bomb planted at ${msg.site}`, "Protect it until it blows", "is-bomb", 2000);
@@ -324,6 +358,8 @@ export class FpsGame {
     // Keep an open shop in step with the inventory the server reports.
     this.shop?.update(this.shopView());
     this.ground = msg.ground ?? [];
+    this.hostages = msg.hostages ?? [];
+    this.rescue = msg.rescue ?? null;
     const now = performance.now();
     // Keep showing the weapon we just picked until the server has caught up.
     if (this.wanted && now < this.wanted.until && this.me.w !== this.wanted.w) this.me.w = this.wanted.w;
@@ -529,6 +565,35 @@ export class FpsGame {
   // shop message only adds the Team Deathmatch loadout.
   shopView() {
     return { ...this.shopState, credits: this.me.cr ?? this.shopState.credits, armor: this.me.ar ?? this.shopState.armor, purchases: this.me.pu ?? this.shopState.purchases, slots: { primary: this.me.inv?.find((id) => WEAPONS[id]?.slot === "primary") ?? null, secondary: this.me.inv?.find((id) => WEAPONS[id]?.slot === "secondary") ?? null } };
+  }
+
+  // ---------- Team Deathmatch hero change ----------
+
+  get heroSwapAvailable() {
+    return this.mode === "tdm" && !this.spectator && this.round.phase !== "pick";
+  }
+
+  toggleHeroSwap() {
+    if (this.heroSwapOpen) return this.closeHeroSwap();
+    if (!this.heroSwapAvailable || this.laptop || this.hud.chatOpen) return;
+    this.closeShop();
+    this.cancelAim();
+    this.heroSwapOpen = true;
+    this.showHeroSwap();
+    if (!this.controls.touch) this.controls.unlock();
+  }
+
+  showHeroSwap() {
+    const team = [...this.players.values()].filter((p) => p.team === this.team).map((p) => ({ id: p.id, name: p.name, bot: p.bot, hero: p.hero, hover: p.hero, locked: true }));
+    const current = this.players.get(this.meId)?.hero;
+    this.heroSelect.update({ swap: true, team, current, next: this.nextHero ?? null, instant: !this.me.alive || (this.me.pr ?? 0) > 0 });
+  }
+
+  closeHeroSwap() {
+    if (!this.heroSwapOpen) return;
+    this.heroSwapOpen = false;
+    this.heroSelect.hide();
+    if (!this.controls.touch && this.me.alive) this.controls.requestLock();
   }
 
   toggleShop() {
@@ -938,7 +1003,9 @@ export class FpsGame {
     }
     const me = this.me.alive ? { x: view.x, z: view.z, yaw: this.controls.state.yaw } : null;
     const smokes = this.effects.filter((e) => e.type === "smoke").map((e) => ({ x: e.x, z: e.z, r: e.r }));
-    this.minimap.draw(now, { me, mates, enemies, seen: this.seen, bomb: this.bombSpot(), smokes });
+    // Attackers only see hostages their own team is leading; defenders see every one still inside.
+    const hostages = this.isAttacker && !this.spectator ? this.hostages.filter((h) => h[4] === 1) : this.hostages;
+    this.minimap.draw(now, { me, mates, enemies, seen: this.seen, bomb: this.bombSpot(), smokes, hostages });
   }
 
   // ---------- frame ----------
@@ -976,7 +1043,43 @@ export class FpsGame {
     return out;
   }
 
+  onHostage(msg) {
+    const mine = msg.by === this.meId;
+    const byUs = this.players.get(msg.by)?.team === this.team;
+    if (msg.event === "taken") {
+      if (mine) return this.hud.callout("HOSTAGE FREED", "Lead them back to your spawn", "is-small", 1800);
+      return this.hud.banner(byUs ? "Hostage on the move" : "A hostage was taken!", byUs ? "Cover the carrier" : "Stop the carrier", byUs ? "is-go" : "is-bomb", 1800);
+    }
+    if (msg.event === "killed") {
+      this.hud.banner("Hostage killed", mine && msg.penalty ? `-${msg.penalty} credits` : this.players.get(msg.by)?.name ?? "", "is-lose", 2000);
+    }
+    if (msg.event === "rescued" && msg.rescued < msg.total) {
+      this.hud.banner(`Hostage rescued ${msg.rescued}/${msg.total}`, this.isAttacker ? "Bring the other one out" : "Don't lose the last one", this.isAttacker ? "is-go" : "is-bomb", 2000);
+    }
+  }
+
+  // Hostage mode prompts: free a hostage (attackers), lead one home.
+  hostageHud(live, touch) {
+    const leading = this.hostages.find((h) => h[4] === 1 && h[5] === this.meId);
+    const r = this.rescue;
+    const count = r ? ` · rescued ${r.rescued}/${r.alive}` : "";
+    this.hud.carrier(this.round.phase === "live", leading && live ? `🧑 Lead the hostage to your spawn${count}` : `🧑 Hostages${count}`);
+    let prompt = null;
+    let progress;
+    if (live && this.isAttacker && !leading) {
+      const near = this.hostages.find((h) => h[4] === 0 && Math.hypot(h[1] - this.body.x, h[2] - this.body.z) <= HOSTAGE.grabRange);
+      if (near) {
+        const busy = near[7] === this.meId ? near[6] : 0;
+        prompt = busy > 0 ? "Freeing the hostage..." : touch ? "Hold ✋ to free the hostage" : "Hold F to free the hostage";
+        progress = busy;
+      }
+    }
+    this.hud.prompt(prompt, progress);
+    this.controls.setUseVisible(!!prompt);
+  }
+
   updateObjectiveHud(now) {
+    if (this.mode === "hostage") return this.hostageHud(this.me.alive && this.round.phase === "live", this.controls.touch);
     const bomb = this.bomb;
     const carrier = this.carrying;
     const live = this.me.alive && this.round.phase === "live";
@@ -1114,6 +1217,7 @@ export class FpsGame {
       const p = this.players.get(id);
       if (p) this.renderer.updateAvatar(p, s, { teammate: p.team === this.team });
     }
+    if (this.mode === "hostage") this.renderer.updateHostages(this.hostages, dt, { markers: !this.isAttacker || this.spectator });
 
     const c = this.controls.state;
     let view;
@@ -1157,6 +1261,7 @@ export class FpsGame {
     if (this.shop && !this.shopAvailable) this.closeShop();
     const touch = this.controls.touch;
     this.hud.buyHint(this.shopAvailable && !this.shop && this.me.alive && (this.mode === "bomb" || this.round.phase === "buy") ? (touch ? (this.mode === "tdm" ? "🎒 Loadout" : "🛒 Shop") : this.mode === "tdm" ? "B · Loadout" : "B · Buy") : null);
+    this.hud.heroButton(this.heroSwapAvailable && !this.heroSwapOpen, touch);
     this.hud.respawn(this.mode === "tdm" && !this.me.alive ? this.me.re ?? 0 : 0);
     // Follow the server's scope level (bolt reload drops out and back in, swaps and death drop out),
     // after giving it a moment to hear about a fresh right-click.

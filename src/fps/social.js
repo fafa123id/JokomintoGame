@@ -10,7 +10,7 @@ const el = (html) => {
   return t.content.firstElementChild;
 };
 
-const MODE_NAMES = { bomb: "💣 Bomb", tdm: "⚔️ Team Deathmatch" };
+const MODE_NAMES = { bomb: "💣 Bomb", tdm: "⚔️ Team Deathmatch", hostage: "🧑‍🤝‍🧑 Hostage" };
 const SLOT_NAMES = { red: "Red", blue: "Blue", spec: "Spectators" };
 const SLOT_MAX = { red: 5, blue: 5, spec: 4 };
 const mapName = (id) => (id === "random" ? "🎲 Random" : MAPS[id]?.name ?? id);
@@ -157,6 +157,81 @@ export function closeInvitePopup(id = null) {
   clearTimeout(popup.timer);
   popup.view.remove();
   popup = null;
+}
+
+// ---------- ranked ----------
+
+// Tier badge with the level and progress to the next one.
+export function rankCard(profile, { onLadder }) {
+  const r = profile?.rank;
+  const card = el(`
+    <section class="fps-rank">
+      <div class="fps-rank-badge"><span class="fps-rank-icon"></span><div><strong></strong><small></small></div></div>
+      <div class="fps-rank-bar"><span></span></div>
+      <div class="fps-rank-row"><small class="fps-rank-mode">🎲 Mode is random each match: 💣 Bomb or 🧑‍🤝‍🧑 Hostage</small><button type="button" class="fps-pill is-ghost" data-ladder>🏆 Ladder</button></div>
+      <p class="fps-party-hint"></p>
+    </section>`);
+  card.style.setProperty("--rank", r?.color ?? "#94a3b8");
+  card.querySelector(".fps-rank-icon").textContent = r?.icon ?? "❔";
+  card.querySelector("strong").textContent = r?.label ?? "Unranked";
+  card.querySelector("small").textContent = r ? `${r.points} RP${r.next ? ` · ${r.next - r.points} to go` : ""}${profile.position ? ` · #${profile.position}` : ""}` : "";
+  card.querySelector(".fps-rank-bar span").style.width = `${Math.round((r?.progress ?? 0) * 100)}%`;
+  card.querySelector("[data-ladder]").addEventListener("click", onLadder);
+  card.querySelector("p").textContent = profile?.bannedMs > 0 ? `You left a ranked match: ranked opens again in ${Math.ceil(profile.bannedMs / 60_000)} min` : "Parties up to 3 · bots fill empty slots at your level · Joko Emperor = top 10 Joko Masters";
+  return card;
+}
+
+export function ladderSheet(root, { top, me }) {
+  root.querySelector(".fps-sheet")?.remove();
+  const sheet = el(`
+    <div class="fps-sheet" role="dialog" aria-modal="true">
+      <div class="fps-sheet-card fps-ladder">
+        <header><h2>🏆 Ranked ladder</h2><button type="button" class="fps-mini" data-close aria-label="Close">✕</button></header>
+        <div class="fps-ladder-me"></div>
+        <ol></ol>
+      </div>
+    </div>`);
+  const close = () => sheet.remove();
+  sheet.querySelector("[data-close]").addEventListener("click", close);
+  sheet.addEventListener("click", (e) => e.target === sheet && close());
+  const mine = sheet.querySelector(".fps-ladder-me");
+  mine.textContent = `You: ${me.rank.icon} ${me.rank.label} · ${me.points} RP${me.position ? ` · #${me.position}` : ""} · ${me.wins}/${me.games} wins`;
+  const list = sheet.querySelector("ol");
+  if (!top.length) list.append(el(`<p class="fps-party-hint">Nobody on the ladder yet. Registered players appear here after a ranked match.</p>`));
+  for (const row of top) {
+    const li = el(`<li><span class="fps-ladder-pos"></span><span class="fps-ladder-icon"></span><span class="fps-person-name"></span><span class="fps-ladder-rp"></span></li>`);
+    li.querySelector(".fps-ladder-pos").textContent = `#${row.position}`;
+    li.querySelector(".fps-ladder-icon").textContent = row.rank.icon;
+    li.querySelector(".fps-ladder-icon").title = row.rank.label;
+    li.querySelector(".fps-person-name").textContent = row.name;
+    li.querySelector(".fps-ladder-rp").textContent = `${row.points} RP`;
+    li.classList.toggle("is-emperor", row.rank.id === "emperor");
+    list.append(li);
+  }
+  root.append(sheet);
+}
+
+// End of a ranked match: the RP change, what it was made of, and any promotion.
+export function rpSummary(change) {
+  const box = el(`<div class="fps-rp"><strong></strong><div class="fps-rp-rank"></div><div class="fps-rp-parts"></div></div>`);
+  const sign = change.delta >= 0 ? "+" : "";
+  box.classList.toggle("is-down", change.delta < 0);
+  box.querySelector("strong").textContent = `${sign}${change.delta} RP`;
+  const a = change.rankBefore;
+  const b = change.rankAfter;
+  const moved = a.label !== b.label;
+  box.querySelector(".fps-rp-rank").textContent = moved ? `${a.icon} ${a.label} → ${b.icon} ${b.label}${b.index > a.index || (b.index === a.index && b.points > a.points) ? " · PROMOTED!" : ""}` : `${b.icon} ${b.label} · ${b.points} RP`;
+  if (change.left) box.querySelector(".fps-rp-parts").textContent = "Left the match early";
+  else {
+    const labels = { kills: "Kills", assists: "Assists", objectives: "Objectives", deaths: "Deaths", cost: "Entry cost" };
+    for (const [key, value] of Object.entries(change.parts ?? {})) {
+      if (!value) continue;
+      const chip = el(`<span></span>`);
+      chip.textContent = `${labels[key]} ${value > 0 ? "+" : ""}${value}`;
+      box.querySelector(".fps-rp-parts").append(chip);
+    }
+  }
+  return box;
 }
 
 // ---------- custom lobby ----------

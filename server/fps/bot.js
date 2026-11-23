@@ -1,7 +1,7 @@
 import { CELL, KEY, PLAYER, eyeHeight, forwardOf, lineOfSight, toCell, isSolid, collides, rayWorld, smokeBetween, smokeBlocks } from "../../src/fps/shared/physics.js";
 import { heroById } from "../../src/fps/shared/heroes.js";
 import { isWalkable, siteAt } from "../../src/fps/shared/maps.js";
-import { RULES, SIDES } from "../../src/fps/shared/rules.js";
+import { RULES, SIDES, HOSTAGE } from "../../src/fps/shared/rules.js";
 import { WEAPONS } from "../../src/fps/shared/weapons.js";
 
 // Bot brain: walk a grid path toward a goal, react to visible enemies with human-like delay,
@@ -20,7 +20,8 @@ const STUCK_MS = 1400;
 // How long a bot remembers where it last saw an enemy who vanished into smoke.
 const MEMORY_MS = 3500;
 
-export function createBrain(rng) {
+// level (0-1): how good the bot is; ranked matches scale it with the players' ranks.
+export function createBrain(rng, level = null) {
   return {
     rng,
     path: [],
@@ -41,7 +42,7 @@ export function createBrain(rng) {
     lookUntil: 0,
     pauseUntil: 0,
     pauseCheckAt: 0,
-    skill: 0.55 + rng() * 0.35,
+    skill: level === null ? 0.55 + rng() * 0.35 : Math.max(0.3, Math.min(0.98, 0.35 + level * 0.58 + (rng() - 0.5) * 0.14)),
     round: 0,
     role: "escort",
     holdSite: null,
@@ -74,7 +75,8 @@ const turnToward = (current, desired, maxStep) => current + Math.max(-maxStep, M
 const dist2d = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const center = (cell) => ({ x: (cell.x + 0.5) * CELL, z: (cell.z + 0.5) * CELL });
 
-function bfsPath(map, from, to) {
+// blocked: cells closed by ability walls (start and goal stay open so a bot never strands itself).
+function bfsPath(map, from, to, blocked = null) {
   const key = (x, z) => z * map.width + x;
   const start = key(from.x, from.z);
   const goal = key(to.x, to.z);
@@ -89,7 +91,7 @@ function bfsPath(map, from, to) {
       const nx = x + dx;
       const nz = z + dz;
       const k = key(nx, nz);
-      if (!prev.has(k) && isWalkable(map, nx, nz)) {
+      if (!prev.has(k) && isWalkable(map, nx, nz) && (!blocked?.has(k) || k === goal)) {
         prev.set(k, cur);
         queue.push(k);
       }
@@ -102,6 +104,58 @@ function bfsPath(map, from, to) {
 }
 
 const cellOf = (pos) => ({ x: toCell(pos.x), z: toCell(pos.z) });
+
+// Ability walls this bot can't walk through (a team's own fence lets it pass), as grid cells.
+function wallCells(room, team) {
+  const set = new Set();
+  for (const e of room.abilities.effects) {
+    const b = e.block;
+    if (!b || b.pass === team) continue;
+    for (let z = toCell(b.z0 - 0.1); z <= toCell(b.z1 + 0.1); z++) {
+      for (let x = toCell(b.x0 - 0.1); x <= toCell(b.x1 + 0.1); x++) set.add(z * room.map.width + x);
+    }
+  }
+  return set;
+}
+
+// Route around enemy (and friendly) walls when there's a reasonable way round. When the detour is
+// much longer, or there's none, take the straight route and mark that an enemy wall needs breaking.
+export function planPath(room, p, from, to) {
+  const blocked = wallCells(room, p.team);
+  const direct = bfsPath(room.map, from, to);
+  if (!blocked.size) return { path: direct, breach: false };
+  const around = bfsPath(room.map, from, to, blocked);
+  const detourOk = around.length && around.length <= direct.length * 1.6 + 6;
+  if (detourOk) return { path: around, breach: false };
+  return { path: direct, breach: true };
+}
+
+// The ability wall standing in the way of the next few meters of walking, if any: { effect, enemy,
+// d, x, z, h }. Traces the actual line the bot will walk, so it also catches walls inside its cell.
+export function wallAhead(room, p, next) {
+  const body = p.body;
+  const dx = next.x - body.x;
+  const dz = next.z - body.z;
+  const len = Math.min(4, Math.hypot(dx, dz));
+  if (len < 0.05) return null;
+  const ux = dx / Math.hypot(dx, dz);
+  const uz = dz / Math.hypot(dx, dz);
+  const r = PLAYER.radius + 0.05;
+  for (let s = 0.25; s <= len + 0.01; s += 0.25) {
+    const x = body.x + ux * s;
+    const z = body.z + uz * s;
+    for (const e of room.abilities.effects) {
+      const b = e.block;
+      if (!b || b.pass === p.team) continue;
+      if (x + r > b.x0 && x - r < b.x1 && z + r > b.z0 && z - r < b.z1) {
+        const cx = Math.max(b.x0, Math.min(body.x, b.x1));
+        const cz = Math.max(b.z0, Math.min(body.z, b.z1));
+        return { effect: e, enemy: e.team !== p.team, d: Math.hypot(cx - body.x, cz - body.z), x: (b.x0 + b.x1) / 2, z: (b.z0 + b.z1) / 2, h: b.h };
+      }
+    }
+  }
+  return null;
+}
 const pick = (rng, list) => list[Math.floor(rng() * list.length)];
 
 // Covered angles on a planted bomb: 2-6 cells away, with a clear view of it, next to a wall or crate.
@@ -172,10 +226,98 @@ function tdmGoal(room, p, now) {
   return goalAt(p.body, "roam-here", 1);
 }
 
+// Hostage: attackers send two to grab the nearest hostage and escort whoever carries one home;
+// defenders hold the hostages and go straight for a carrier.
+function hostageGoal(room, p, now) {
+  const brain = p.brain;
+  setupRound(room, p);
+  const side = room.sideOf(p.team);
+  const mates = room.playersOn(side).filter((q) => q.alive);
+  const live = room.hostages.filter((h) => h.state === "idle" || h.state === "carried");
+  const carried = live.find((h) => h.state === "carried");
+  const elapsed = now - (room.round.ends - HOSTAGE.roundSec * 1000);
+  if (side === SIDES.ATTACK) {
+    const mine = room.carrying(p);
+    if (mine) {
+      // Home to the nearest corner of our spawn.
+      const zone = room.map.zones.attack;
+      const cell = zone.reduce((a, b) => (dist2d(center(b), p.body) < dist2d(center(a), p.body) ? b : a));
+      return goalCell(cell, "rescue");
+    }
+    if (carried) {
+      const carrier = room.players.get(carried.carrier);
+      if (carrier?.alive) return goalAt(carrier.body, `follow-${carrier.id}`, FOLLOW_DIST);
+    }
+    // Only hostages the team has actually seen; otherwise sweep one site, then the other.
+    const free = live.filter((h) => h.state === "idle" && h.spotted);
+    if (!free.length) {
+      if (brain.searchRound !== room.round.n) {
+        brain.searchRound = room.round.n;
+        brain.searchSite = room.bomb.botSite;
+      }
+      const key = `search-${brain.searchSite}`;
+      if (brain.goal?.key === key && dist2d(brain.goal.exact, p.body) < 2.5) brain.searchSite = brain.searchSite === "A" ? "B" : "A";
+      else if (brain.goal?.key === key) return brain.goal;
+      return goalCell(pick(brain.rng, room.map.sites[brain.searchSite]), `search-${brain.searchSite}`);
+    }
+    // Lurkers take the other hostage; everyone else the one nearest the team.
+    const byDistance = [...free].sort((a, b) => dist2d(a.body, p.body) - dist2d(b.body, p.body));
+    const target = brain.role === "lurk" && byDistance.length > 1 ? byDistance[1] : byDistance[0];
+    const grabbers = mates.filter((q) => !room.carrying(q)).sort((a, b) => dist2d(a.body, target.body) - dist2d(b.body, target.body));
+    if (grabbers.indexOf(p) < 2 || brain.role === "lurk") return goalAt(target.body, `grab-${target.id}`, 1.2);
+    return goalAt(target.body, `cover-${target.id}`, FOLLOW_DIST);
+  }
+  if (carried) {
+    const carrier = room.players.get(carried.carrier);
+    if (carrier?.alive) return goalAt(carrier.body, `chase-${carrier.id}`, 2);
+  }
+  if (elapsed > PUSH_AFTER_MS && brain.role === "lurk") {
+    const prey = room
+      .playersOn(SIDES.ATTACK)
+      .filter((e) => e.alive)
+      .sort((a, b) => dist2d(a.body, p.body) - dist2d(b.body, p.body))[0];
+    if (prey) return goalAt(prey.body, `hunt-${prey.id}`, 3);
+  }
+  // Guard the hostages: one each, the rest wherever they like.
+  const index = mates.sort((a, b) => a.id - b.id).indexOf(p);
+  const guard = live[index % Math.max(1, live.length)];
+  if (!guard) return goalAt(p.body, "wait", 1);
+  const key = `guard-${guard.id}`;
+  if (brain.goal?.key === key && now < brain.holdUntil) return brain.goal;
+  brain.holdUntil = now + 10_000 + brain.rng() * 8_000;
+  const angle = brain.rng() * Math.PI * 2;
+  const spot = { x: guard.body.x + Math.cos(angle) * (5 + brain.rng() * 3), z: guard.body.z + Math.sin(angle) * (5 + brain.rng() * 3) };
+  return isWalkable(room.map, toCell(spot.x), toCell(spot.z)) ? goalAt(spot, key, 1) : goalAt(guard.body, key, 3);
+}
+
+const BLASTS = new Set(["grenade", "barrage", "laser", "drone"]);
+function blastRisk(room, p, slot) {
+  const hero = heroById(p.hero);
+  const id = slot === "skill" ? hero?.skill.id : hero?.ult.id;
+  if (!BLASTS.has(id)) return false;
+  const spots = [p.body, p.brain.lastSeen].filter(Boolean);
+  return room.hostages.some((h) => (h.state === "idle" || h.state === "carried") && spots.some((s) => dist2d(s, h.body) < 14));
+}
+
+// A hostage standing near the line between a shooter and a target.
+function hostageInLine(room, from, to) {
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  const len2 = dx * dx + dz * dz || 1;
+  return room.hostages.some((h) => {
+    if (h.state !== "idle" && h.state !== "carried") return false;
+    const k = ((h.body.x - from.x) * dx + (h.body.z - from.z) * dz) / len2;
+    if (k <= 0 || k >= 1.8) return false;
+    // Spread grows with range, so the safe margin does too.
+    return Math.hypot(from.x + dx * k - h.body.x, from.z + dz * k - h.body.z) < 1.1 + k * Math.sqrt(len2) * 0.04;
+  });
+}
+
 // Where this bot wants to be right now.
 function chooseGoal(room, p, now) {
   const brain = p.brain;
   if (room.mode === "tdm") return tdmGoal(room, p, now);
+  if (room.mode === "hostage") return hostageGoal(room, p, now);
   setupRound(room, p);
   const side = room.sideOf(p.team);
   const bomb = room.bomb;
@@ -301,19 +443,19 @@ function moveKeys(yaw, dir) {
 }
 
 // Straight walkable line between two points (body width included)?
-function clearWalk(map, a, b) {
+function clearWalk(map, a, b, team = null) {
   const len = Math.hypot(b.x - a.x, b.z - a.z);
   const steps = Math.ceil(len / 0.5);
   for (let i = 1; i <= steps; i++) {
     const k = i / steps;
-    if (collides(map, a.x + (b.x - a.x) * k, a.z + (b.z - a.z) * k, PLAYER.radius + 0.12)) return false;
+    if (collides(map, a.x + (b.x - a.x) * k, a.z + (b.z - a.z) * k, PLAYER.radius + 0.12, team)) return false;
   }
   return true;
 }
 
 // Cut corners: head for the furthest upcoming path point that can be reached in a straight line.
-function smoothNext(room, body, path) {
-  for (let i = Math.min(path.length - 1, 5); i > 0; i--) if (clearWalk(room.map, body, path[i])) return path[i];
+function smoothNext(room, body, path, team) {
+  for (let i = Math.min(path.length - 1, 5); i > 0; i--) if (clearWalk(room.map, body, path[i], team)) return path[i];
   return path[0];
 }
 
@@ -389,6 +531,8 @@ function fight(room, p, seen, now, out) {
     // Burst at range, spray up close.
     out.fire = weapon.pellets && flat > 18 ? false : flat > 18 && weapon.auto ? now - p.lastShotAt > weapon.interval * 1000 * 2.5 : true;
   }
+  // Never shoot through a hostage: wait for a clean line.
+  if (out.fire && hostageInLine(room, p.body, seen.enemy.body)) out.fire = false;
   // Duck and weave: strafe changes direction irregularly, sometimes crouch-spraying.
   if (now > brain.strafeAt) {
     brain.strafe = brain.rng() < 0.5 ? -1 : 1;
@@ -410,6 +554,8 @@ export function think(room, p, now) {
   if (room.abilities.stunned(p, now)) return { keys: 0, yaw: p.body.yaw, pitch: p.body.pitch, fire: false, use: false, reload: false };
   const out = move(room, p, now);
   if (room.round.phase === "live" && p.hero) out.ability = chooseAbility(room, p, now, out);
+  // No grenades, firecrackers, lasers or hunter drones anywhere near a hostage.
+  if (out.ability && room.mode === "hostage" && blastRisk(room, p, out.ability.slot)) out.ability = null;
   return out;
 }
 
@@ -665,14 +811,22 @@ function move(room, p, now) {
   const here = cellOf(body);
   if (goal.key !== brain.goal?.key || goal.cell.x !== brain.goal.cell.x || goal.cell.z !== brain.goal.cell.z || now > brain.repathAt) {
     brain.goal = goal;
-    brain.path = bfsPath(room.map, here, goal.cell);
-    brain.repathAt = now + REPATH_MS;
+    const plan = planPath(room, p, here, goal.cell);
+    brain.path = plan.path;
+    brain.breach = plan.breach;
+    // Walls come and go: look again sooner while any are up.
+    brain.repathAt = now + (room.abilities.effects.some((e) => e.block) ? 700 : REPATH_MS);
   }
 
   const bomb = room.bomb;
   const toExact = dist2d(body, goal.exact);
   if (toExact <= goal.radius) {
     brain.lastMoveAt = now;
+    if (goal.key.startsWith("grab-")) {
+      out.use = true;
+      out.keys |= KEY.CROUCH;
+      return out;
+    }
     if (side === SIDES.ATTACK && bomb.carrier === p.id && !bomb.planted && siteAt(room.map, body.x, body.z)) {
       out.use = true;
       return out;
@@ -697,11 +851,32 @@ function move(room, p, now) {
     brain.path.shift();
     next = brain.path[0];
   }
-  next = !next || (here.x === goal.cell.x && here.z === goal.cell.z) ? goal.exact : smoothNext(room, body, brain.path);
+  next = !next || (here.x === goal.cell.x && here.z === goal.cell.z) ? goal.exact : smoothNext(room, body, brain.path, p.team);
   const dx = next.x - body.x;
   const dz = next.z - body.z;
   const len = Math.hypot(dx, dz) || 1;
   const dir = { x: dx / len, z: dz / len };
+
+  // A wall in the way of the next steps. Ours (or no gun): plan around it. The enemy's: go around
+  // when the planner found a reasonable way, otherwise (or when it's right in our face) shoot it down.
+  const wall = wallAhead(room, p, next);
+  if (wall && (!wall.enemy || !WEAPONS[p.weapon]?.gun) && now > (brain.wallRepathAt ?? 0)) {
+    brain.wallRepathAt = now + 1000;
+    brain.repathAt = 0;
+  }
+  if (wall?.enemy && WEAPONS[p.weapon]?.gun && (brain.breach || wall.d < 1.6)) {
+    const eye = eyeHeight(body);
+    const aimY = Math.min(wall.h - 0.3, 1.3);
+    const yaw = yawTo(wall.x - body.x, wall.z - body.z);
+    const pitch = Math.atan2(aimY - eye, Math.max(0.5, wall.d));
+    out.yaw = steerYaw(brain, body.yaw, yaw, dt, 1.6);
+    out.pitch = steerPitch(brain, body.pitch, pitch, dt);
+    if (Math.abs(angleDiff(out.yaw, yaw)) < 0.15) out.fire = true;
+    // Back off a step if pressed right against it, so shots land.
+    if (wall.d < 1) out.keys |= moveKeys(out.yaw, { x: -dir.x, z: -dir.z });
+    brain.lastMoveAt = now;
+    return out;
+  }
   const heading = yawTo(dir.x, dir.z);
   const look = chooseLook(room, p, now, heading, brain.path);
   // Never look so far off the heading that it turns into a backpedal march.

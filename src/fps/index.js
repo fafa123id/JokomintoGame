@@ -1,6 +1,6 @@
 import { sendEvent, getGameService } from "../stateManager.js";
 import { refreshPet, api, state as appState } from "../api.js";
-import { partyBar, inviteSheet, showInvitePopup, closeInvitePopup, customEntry, customLobby } from "./social.js";
+import { partyBar, inviteSheet, showInvitePopup, closeInvitePopup, customEntry, customLobby, rankCard, ladderSheet, rpSummary } from "./social.js";
 import { updateContext } from "../components.js";
 import { requireSession } from "../account.js";
 import { FpsGame } from "./game.js";
@@ -14,8 +14,8 @@ import { loadModels, modelsReady } from "./assets.js";
 const MODES = [
   { id: "bomb", icon: "💣", name: "Bomb", hint: "Plant or defuse · buy guns · first to 10 rounds", ready: true },
   { id: "tdm", icon: "⚔️", name: "Team Deathmatch", hint: "Respawns · free loadout · first to 40 kills", ready: true },
-  { id: "hostage", icon: "🧑‍🤝‍🧑", name: "Hostage", hint: "Coming soon", ready: false },
-  { id: "ranked", icon: "🏆", name: "Ranked", hint: "Coming soon", ready: false },
+  { id: "hostage", icon: "🧑‍🤝‍🧑", name: "Hostage", hint: "Rescue or guard two hostages · buy guns · first to 10", ready: true },
+  { id: "ranked", icon: "🏆", name: "Ranked", hint: "Climb from Unranked to Joko Emperor", ready: true },
   { id: "custom", icon: "🛠️", name: "Custom lobby", hint: "Private room · your teams and rules", ready: true, opens: true },
 ];
 
@@ -31,6 +31,9 @@ let party = null;
 let custom = null;
 let screen = "main";
 let pendingAccept = null;
+// Ranked: the player's ladder profile (the server rolls Bomb or Hostage per match).
+let rankedProfile = null;
+const queueMessage = () => (selectedMode === "ranked" ? { t: "queue", ranked: true } : { t: "queue", mode: selectedMode });
 const myId = () => appState.user?.id ?? null;
 const isLeader = () => !party || party.leader === myId();
 
@@ -98,8 +101,11 @@ function showCustom() {
 
 function lobby(message = "") {
   wantQueue = false;
-  if (party) selectedMode = party.mode;
+  if (party) {
+    selectedMode = party.ranked ? "ranked" : party.mode;
+  }
   const leader = isLeader();
+  const setMode = (mode, ranked) => party && send({ t: "party", action: "mode", mode, ranked });
   const view = el(`
     <div class="fps-lobby">
       <div class="fps-lobby-head">
@@ -108,12 +114,13 @@ function lobby(message = "") {
       </div>
       <div data-party></div>
       <div class="fps-modes"></div>
+      <div data-ranked></div>
       <div class="fps-maps"><small>Map pool</small><div></div></div>
       <button type="button" class="fps-cta" data-find>Find match</button>
       <p class="fps-note" data-note></p>
       <details class="fps-howto">
         <summary>Controls</summary>
-        <p>${isTouchDevice() ? "Left thumb: move · Drag right side: aim · 🔫 shoot (drag to aim while shooting) · ⤒ jump · ⤓ crouch · ↻ reload · weapon bar to switch · skill/ultimate buttons · 💣 hold to plant/defuse · 💬 chat · ☰ menu" : "WASD move · Mouse aim · Click shoot · Right-click scope · B buy · R reload · Q/E, scroll or 1-4 weapons · G drop weapon · Z skill · X ultimate · F hold to plant/defuse · Space jump · " + (navigator.keyboard?.lock ? "Ctrl/C crouch (fullscreen)" : "C crouch") + " · Shift walk · Tab scoreboard · Enter chat · Esc menu"}</p>
+        <p>${isTouchDevice() ? "Left thumb: move · Drag right side: aim · 🔫 shoot (drag to aim while shooting) · ⤒ jump · ⤓ crouch · ↻ reload · weapon bar to switch · skill/ultimate buttons · 💣 hold to plant/defuse · 💬 chat · ☰ menu" : "WASD move · Mouse aim · Click shoot · Right-click scope · B buy · H change hero (TDM) · R reload · Q/E, scroll or 1-4 weapons · G drop weapon · Z skill · X ultimate · F hold to plant/defuse · Space jump · " + (navigator.keyboard?.lock ? "Ctrl/C crouch (fullscreen)" : "C crouch") + " · Shift walk · Tab scoreboard · Enter chat · Esc menu"}</p>
       </details>
       <button type="button" class="fps-back" data-back>← Back to games</button>
     </div>`);
@@ -128,9 +135,8 @@ function lobby(message = "") {
       card.addEventListener("click", () => {
         if (m.opens) return showEntry();
         selectedMode = m.id;
-        view.querySelectorAll(".fps-mode").forEach((c) => c.classList.remove("is-active"));
-        card.classList.add("is-active");
-        if (party) send({ t: "party", action: "mode", mode: m.id });
+        if (party) setMode(m.id === "ranked" ? "bomb" : m.id, m.id === "ranked");
+        lobby();
       });
       return card;
     })
@@ -142,6 +148,12 @@ function lobby(message = "") {
       return chip;
     })
   );
+  const rankedSlot = view.querySelector("[data-ranked]");
+  if (selectedMode === "ranked") {
+    rankedSlot.replaceWith(
+      rankCard(rankedProfile, { onLadder: () => send({ t: "ladder" }) })
+    );
+  } else rankedSlot.remove();
   view.querySelector("[data-party]").replaceWith(
     partyBar(party, myId(), {
       onInvite: () => inviteSheet(root, "party", send),
@@ -154,7 +166,8 @@ function lobby(message = "") {
   if (!leader) {
     find.disabled = true;
     find.textContent = `Waiting for ${party.members.find((p) => p.id === party.leader)?.name ?? "the leader"}`;
-  } else if (party) find.textContent = `Find match · party of ${party.members.length}`;
+  } else if (party) find.textContent = `Find ${selectedMode === "ranked" ? "ranked " : ""}match · party of ${party.members.length}`;
+  else if (selectedMode === "ranked") find.textContent = "Find ranked match";
   view.querySelector("[data-note]").textContent = message;
   find.addEventListener("click", findMatch);
   view.querySelector("[data-back]").addEventListener("click", close);
@@ -180,8 +193,9 @@ function queueScreen(status = {}) {
     setPanel(view);
   }
   const mode = status.mode ?? selectedMode;
+  view.querySelector("h2").textContent = status.ranked ? "Finding a ranked match" : "Finding players";
   view.querySelector("[data-count]").textContent = `${status.waiting ?? 1} / 10 players in queue${status.party > 1 ? ` · your party of ${status.party}` : ""}`;
-  view.querySelector("[data-mode]").textContent = mode === "tdm" ? "⚔️ Team Deathmatch" : "💣 Bomb";
+  view.querySelector("[data-mode]").textContent = { tdm: "⚔️ Team Deathmatch", hostage: "🧑‍🤝‍🧑 Hostage", ranked: "🏆 Ranked · 🎲 Bomb or Hostage" }[mode] ?? "💣 Bomb";
   view.querySelector("[data-fill]").textContent = status.full
     ? "All servers are busy, you're next in line..."
     : `Bots fill the empty slots in ${Math.ceil((status.fillInMs ?? 0) / 1000)}s`;
@@ -200,6 +214,7 @@ function endScreen(msg) {
     <div class="fps-end ${won ? "is-win" : "is-lose"}">
       <h1>${draw ? "DRAW" : won ? "VICTORY" : "DEFEAT"}</h1>
       <p class="fps-end-score"><span class="is-red"></span> : <span class="is-blue"></span></p>
+      <div data-rp></div>
       <div class="fps-rewards"></div>
       <table class="fps-table"><thead><tr><th>Player</th><th>K</th><th>D</th><th>A</th></tr></thead><tbody></tbody></table>
       <div class="fps-end-actions">
@@ -207,6 +222,9 @@ function endScreen(msg) {
         <button type="button" class="fps-back" data-back>Back to games</button>
       </div>
     </div>`);
+  const rp = view.querySelector("[data-rp]");
+  if (msg.reward?.ranked) rp.replaceWith(rpSummary(msg.reward.ranked));
+  else rp.remove();
   view.querySelector(".is-red").textContent = msg.score.red;
   view.querySelector(".is-blue").textContent = msg.score.blue;
   const r = msg.reward;
@@ -223,7 +241,7 @@ function endScreen(msg) {
       .map((p) => {
         const tr = el(`<tr><td></td><td></td><td></td><td></td></tr>`);
         tr.className = `is-${p.team}${p.id === game?.meId ? " is-me" : ""}`;
-        tr.children[0].textContent = `${p.name}${p.bot ? " 🤖" : ""}`;
+        tr.children[0].textContent = `${p.rank ? `${p.rank.icon} ` : ""}${p.name}${p.bot ? " 🤖" : ""}`;
         tr.children[1].textContent = p.kills;
         tr.children[2].textContent = p.deaths;
         tr.children[3].textContent = p.assists ?? 0;
@@ -317,7 +335,7 @@ function connect() {
     retries = 0;
     flushAccept();
     // On reconnect the server already sends the running match; only ask to queue when not in one.
-    if (wantQueue && !game) send({ t: "queue", mode: selectedMode });
+    if (wantQueue && !game) send(queueMessage());
   });
   ws.addEventListener("message", (e) => {
     let msg;
@@ -326,9 +344,14 @@ function connect() {
     } catch {
       return;
     }
-    if (msg.t === "hello" || msg.t === "left") {
+    if (msg.t === "profile" || msg.t === "ladder") {
+      rankedProfile = msg.ranked ?? msg.me ?? rankedProfile;
+      if (msg.t === "ladder") ladderSheet(root, msg);
+      else if (idle() && screen === "main") lobby();
+    } else if (msg.t === "hello" || msg.t === "left") {
       party = msg.party ?? null;
       custom = msg.lobby ?? null;
+      rankedProfile = msg.ranked ?? rankedProfile;
       if (msg.t === "hello" && idle()) render();
     } else if (msg.t === "party") {
       party = msg.party;
@@ -355,7 +378,10 @@ function connect() {
       wantQueue = false;
       lobby(msg.reason ?? "");
     }
-    else if (msg.t === "match_end") endScreen(msg);
+    else if (msg.t === "match_end") {
+      endScreen(msg);
+      if (msg.ranked) send({ t: "profile" });
+    }
     else game?.handle(msg);
   });
   ws.addEventListener("close", () => {
@@ -382,7 +408,7 @@ async function findMatch() {
       await screen.orientation?.lock?.("landscape");
     } catch {}
   }
-  if (ws?.readyState === WebSocket.OPEN) send({ t: "queue", mode: selectedMode });
+  if (ws?.readyState === WebSocket.OPEN) send(queueMessage());
   else if (!ws || ws.readyState === WebSocket.CLOSED) connect();
 }
 

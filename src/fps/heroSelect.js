@@ -4,13 +4,15 @@ import { HEROES, ROLES, heroById } from "./shared/heroes.js";
 // lock button below. Only your own team is ever shown. Text goes through textContent.
 const hex = (n) => `#${n.toString(16).padStart(6, "0")}`;
 
-export function createHeroSelect(root, { meId, onHover, onLock, onUnlock }) {
+// Swap mode (Team Deathmatch, mid-match): no timer, choices stay local until confirmed, closable.
+export function createHeroSelect(root, { meId, onHover, onLock, onUnlock, onSwap, onClose }) {
   const el = document.createElement("div");
   el.className = "fps-pick";
   el.innerHTML = `
     <div class="fps-pick-head">
-      <div><strong>Choose your hero</strong><small>One of each per team · enemy picks are hidden</small></div>
+      <div><strong data-title>Choose your hero</strong><small data-sub>One of each per team · enemy picks are hidden</small></div>
       <span class="fps-pick-timer" data-timer>20</span>
+      <button type="button" class="fps-mini fps-pick-close" data-close aria-label="Close">✕</button>
     </div>
     <div class="fps-pick-body">
       <ul class="fps-pick-team" data-team></ul>
@@ -45,15 +47,21 @@ export function createHeroSelect(root, { meId, onHover, onLock, onUnlock }) {
       name.textContent = hero.name;
       const tag = document.createElement("em");
       card.append(icon, name, tag);
-      card.addEventListener("click", () => onHover(hero.id));
-      card.addEventListener("dblclick", () => onLock(hero.id));
+      card.addEventListener("click", () => {
+        if (!state?.swap) return onHover(hero.id);
+        state.choice = hero.id;
+        render();
+      });
+      card.addEventListener("dblclick", () => (state?.swap ? onSwap?.(hero.id) : onLock(hero.id)));
       col.appendChild(card);
       cards.set(hero.id, { card, tag });
     }
     $("grid").appendChild(col);
   }
 
+  $("close").addEventListener("click", () => onClose?.());
   $("lock").addEventListener("click", () => {
+    if (state?.swap) return state.choice && onSwap?.(state.choice);
     const me = state?.team.find((p) => p.id === meId);
     if (!me) return;
     if (me.locked) onUnlock();
@@ -61,12 +69,17 @@ export function createHeroSelect(root, { meId, onHover, onLock, onUnlock }) {
   });
 
   const tick = () => {
-    if (!state) return;
+    if (!state || state.swap) return;
     $("timer").textContent = Math.max(0, Math.ceil((state.ends - Date.now() - (state.offset ?? 0)) / 1000));
   };
 
   function render() {
+    // In swap mode "me" is shown hovering the local choice, unlocked so the cards stay usable.
+    if (state.swap) state.team = state.team.map((p) => (p.id === meId ? { ...p, hero: null, hover: state.choice ?? p.hero, locked: false } : p));
     const me = state.team.find((p) => p.id === meId);
+    el.classList.toggle("is-swap", !!state.swap);
+    $("title").textContent = state.swap ? "Change hero" : "Choose your hero";
+    $("sub").textContent = state.swap ? "Instant while dead or right after spawning, otherwise on your next spawn · ultimate charge resets" : "One of each per team · enemy picks are hidden";
     // Teammates column.
     $("team").replaceChildren(
       ...state.team.map((p) => {
@@ -81,7 +94,8 @@ export function createHeroSelect(root, { meId, onHover, onLock, onUnlock }) {
         const name = document.createElement("strong");
         name.textContent = `${p.name}${p.id === meId ? " (you)" : ""}${p.bot ? " 🤖" : ""}`;
         const status = document.createElement("small");
-        status.textContent = hero ? `${hero.name} · ${p.locked ? "LOCKED" : "picking..."}` : "picking...";
+        if (state.swap) status.textContent = p.id === meId ? (state.choice && state.choice !== state.current ? `${heroById(state.current)?.name ?? ""} → ${hero?.name ?? ""}` : `${hero?.name ?? ""} · CURRENT`) : hero?.name ?? "";
+        else status.textContent = hero ? `${hero.name} · ${p.locked ? "LOCKED" : "picking..."}` : "picking...";
         text.append(name, status);
         li.append(icon, text);
         return li;
@@ -100,7 +114,7 @@ export function createHeroSelect(root, { meId, onHover, onLock, onUnlock }) {
     }
     const hero = heroById(me?.hover);
     const detail = $("detail");
-    if (!hero) detail.textContent = "Pick a hero (double-click to lock)";
+    if (!hero) detail.textContent = state.swap ? "Pick a hero" : "Pick a hero (double-click to lock)";
     else {
       const line = (cls, text) => {
         const div = document.createElement("div");
@@ -118,6 +132,11 @@ export function createHeroSelect(root, { meId, onHover, onLock, onUnlock }) {
     const lock = $("lock");
     lock.textContent = me?.locked ? "Unlock" : "Lock in";
     lock.disabled = !me?.hover;
+    if (state.swap) {
+      const current = state.choice === state.current;
+      lock.textContent = current ? (state.next ? `Keep ${heroById(state.current)?.name ?? ""}` : "Current hero") : state.instant ? "Swap now" : "Swap on next spawn";
+      lock.disabled = !state.choice || (current && !state.next);
+    }
     lock.classList.toggle("is-unlock", !!me?.locked);
     tick();
   }
@@ -125,7 +144,7 @@ export function createHeroSelect(root, { meId, onHover, onLock, onUnlock }) {
   return {
     el,
     update(pick, offset = 0) {
-      state = { ...pick, offset };
+      state = { ...pick, offset, choice: pick.swap ? (state?.swap ? state.choice : pick.next ?? pick.current) : null };
       el.hidden = false;
       timer ??= setInterval(tick, 250);
       render();

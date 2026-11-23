@@ -1598,7 +1598,7 @@
 .fps-pick-head strong { display: block; font-family: "Fredoka One", cursive; font-size: clamp(1.3rem, 4vw, 2rem); }
 .fps-pick-head small { opacity: 0.7; font-size: 0.75rem; }
 .fps-pick-timer { min-width: 3.2rem; padding: 0.3rem 0.7rem; border-radius: 0.8rem; background: rgba(0, 0, 0, 0.45); font-size: 1.6rem; font-weight: 900; text-align: center; font-variant-numeric: tabular-nums; }
-.fps-pick-body { flex: 1; display: grid; grid-template-columns: minmax(150px, 220px) 1fr; gap: 14px; min-height: 0; }
+.fps-pick-body { flex: 1 0 auto; display: grid; grid-template-columns: minmax(150px, 220px) 1fr; gap: 14px; min-height: 0; }
 .fps-pick-team { display: flex; flex-direction: column; gap: 6px; list-style: none; margin: 0; padding: 0; }
 .fps-pick-team li { --hero: #475569; display: flex; align-items: center; gap: 8px; padding: 0.35rem 0.5rem; border-radius: 0.7rem; background: rgba(255, 255, 255, 0.06); border-left: 4px solid var(--hero); }
 .fps-pick-team li.is-me { background: rgba(251, 191, 36, 0.14); }
@@ -1805,3 +1805,33 @@
 .fps-team-col > div { display: grid; gap: 0.3rem; }
 .fps-custom-actions { display: grid; gap: 0; }
 .fps-root.is-spectator .fps-weapons, .fps-root.is-spectator .fps-abilities, .fps-root.is-spectator .fps-ammo, .fps-root.is-spectator .fps-cross { display: none; }
+.fps-herobtn { position: absolute; top: calc(max(10px, env(safe-area-inset-top)) + 40px); left: 132px; display: none; width: 40px; height: 40px; border-radius: 0.7rem; background: rgba(0, 0, 0, 0.45); font-size: 1.1rem; pointer-events: auto; }
+.fps-herobtn.is-on { display: grid; place-items: center; }
+.fps-pick-close { display: none; }
+.fps-pick.is-swap .fps-pick-close { display: block; }
+.fps-pick.is-swap .fps-pick-timer { display: none; }
+
+/* Ranked */
+.fps-rank { --rank: #94a3b8; margin-bottom: 1rem; padding: 0.8rem; border-radius: 1rem; background: linear-gradient(135deg, color-mix(in srgb, var(--rank) 22%, transparent), rgba(255, 255, 255, 0.04)); border: 1px solid color-mix(in srgb, var(--rank) 55%, transparent); text-align: left; }
+.fps-rank-badge { display: flex; align-items: center; gap: 0.7rem; }
+.fps-rank-icon { display: grid; place-items: center; width: 2.8rem; height: 2.8rem; border-radius: 0.8rem; background: rgba(0, 0, 0, 0.3); font-size: 1.6rem; }
+.fps-rank-badge strong { display: block; font-family: "Fredoka One", cursive; font-size: 1.25rem; color: var(--rank); }
+.fps-rank-badge small { opacity: 0.8; font-size: 0.78rem; }
+.fps-rank-bar { height: 6px; margin: 0.6rem 0; border-radius: 6px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.fps-rank-bar span { display: block; height: 100%; background: var(--rank); border-radius: 6px; }
+.fps-rank-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
+.fps-rank-modes { display: flex; gap: 0.4rem; }
+.fps-ladder ol { display: grid; gap: 0.3rem; margin: 0.6rem 0 0; padding: 0; list-style: none; }
+.fps-ladder li { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0.6rem; border-radius: 0.6rem; background: rgba(255, 255, 255, 0.06); }
+.fps-ladder li.is-emperor { background: rgba(244, 63, 94, 0.18); }
+.fps-ladder-pos { width: 2.2rem; font-weight: 800; opacity: 0.7; }
+.fps-ladder-rp { font-weight: 800; color: #fde047; }
+.fps-ladder-me { padding: 0.5rem 0.7rem; border-radius: 0.7rem; background: rgba(251, 191, 36, 0.14); font-size: 0.85rem; font-weight: 700; }
+.fps-rp { margin: 0.4rem 0 0.8rem; padding: 0.7rem; border-radius: 1rem; background: rgba(34, 197, 94, 0.14); border: 1px solid rgba(34, 197, 94, 0.45); }
+.fps-rp.is-down { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.45); }
+.fps-rp strong { display: block; font-size: 2rem; font-weight: 900; color: #86efac; }
+.fps-rp.is-down strong { color: #fca5a5; }
+.fps-rp-rank { font-weight: 800; margin-bottom: 0.4rem; }
+.fps-rp-parts { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3rem; font-size: 0.75rem; }
+.fps-rp-parts span { padding: 0.15rem 0.5rem; border-radius: 999px; background: rgba(255, 255, 255, 0.1); }
+.fps-rank-mode { font-size: 0.75rem; opacity: 0.85; }

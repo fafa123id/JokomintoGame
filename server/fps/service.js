@@ -10,6 +10,8 @@ import { getCurrentPet, mutatePet } from "../services/pet.service.js";
 import { baseFromDifficulty, coinReward } from "../services/scoring.service.js";
 import { COIN } from "../config/game.js";
 import { Social, packTeams, swapAfterFor } from "./party.js";
+import { RankedStat } from "../models/rankedStat.model.js";
+import { TIERS, rankOf, rpChange, EMPEROR_SLOTS, MASTER_FLOOR, PARTY_MAX_RANKED, RANKED_MODES } from "../../src/fps/shared/ranked.js";
 import { send as notifyApp, isAway } from "../realtime/hub.js";
 import { sendToUser as pushToUser } from "../services/push.service.js";
 import { activeMatchFor } from "../services/match.service.js";
@@ -65,9 +67,68 @@ export const social = new Social({
 
 const playersIn = (entries) => entries.reduce((n, e) => n + e.members.length, 0);
 
+// ---------- ranked ----------
+
+// Leaving a ranked match early keeps you out of ranked for a while.
+const RANKED_BAN_MS = Number(process.env.FPS_RANKED_BAN_MS) || 5 * 60_000;
+// The rank window opens one tier wider for every this long a group waits.
+const RANK_WIDEN_MS = 15_000;
+const rankedBans = new Map();
+
+function emperors() {
+  return new Set(RankedStat.top(EMPEROR_SLOTS, MASTER_FLOOR).map((r) => r.user_id));
+}
+
+export function rankedProfile(userId, crowned = emperors()) {
+  const row = RankedStat.find(userId);
+  const rank = rankOf(row.points, { emperor: crowned.has(userId) });
+  return { points: row.points, peak: row.peak, games: row.games, wins: row.wins, last: row.last_delta, rank, position: row.games ? RankedStat.position(userId) : null, bannedMs: Math.max(0, (rankedBans.get(userId) ?? 0) - Date.now()) };
+}
+
+function ladder(limit = 50) {
+  const crowned = emperors();
+  return RankedStat.top(limit).map((r, i) => ({ position: i + 1, name: r.name, uid: r.uid, points: r.points, games: r.games, wins: r.wins, rank: rankOf(r.points, { emperor: crowned.has(r.user_id) }) }));
+}
+
+// Ranked is one queue; each match rolls its mode (Bomb or Hostage).
+const queueKey = (e) => (e.ranked ? "ranked" : e.mode);
+const QUEUE_KEYS = [...MODES, "ranked"];
+
+// Ranked: groups close in rank first; the window widens the longer the oldest group waits.
+function rankedPick(waiting) {
+  const oldest = waiting[0];
+  const widen = Math.floor((Date.now() - oldest.joinedAt) / RANK_WIDEN_MS);
+  return waiting.filter((e) => Math.abs(e.tier - oldest.tier) <= 1 + widen);
+}
+
+// RP for everyone in a finished ranked match, saved and returned per player.
+export function rankedResults(room, { winner, results }, hasLeft = (userId) => roomOfUser.get(userId) !== room.id) {
+  const crowned = emperors();
+  const margin = Math.abs(room.score.red - room.score.blue);
+  const out = {};
+  for (const r of results) {
+    if (!User.find(r.userId)) continue;
+    try {
+      const row = RankedStat.find(r.userId);
+      const left = hasLeft(r.userId);
+      const change = rpChange({ points: row.points, won: r.won, draw: !winner, kills: r.kills, deaths: r.deaths, assists: r.assists, objectives: r.objectives ?? 0, margin, left, emperor: crowned.has(r.userId) });
+      RankedStat.record(r.userId, { points: change.after, delta: change.delta, won: r.won });
+      if (left) rankedBans.set(r.userId, Date.now() + RANKED_BAN_MS);
+      out[r.userId] = { ...change, rankBefore: rankOf(change.before, { emperor: crowned.has(r.userId) }) };
+    } catch (err) {
+      console.error("ranked result failed", err);
+    }
+  }
+  // Crowns move after every match.
+  const after = emperors();
+  for (const id of Object.keys(out)) out[id].rankAfter = rankOf(out[id].after, { emperor: after.has(Number(id)) });
+  return out;
+}
+
 function queueStatus() {
-  for (const mode of MODES) {
-    const waiting = queue.filter((e) => e.mode === mode);
+  for (const key of QUEUE_KEYS) {
+    const waiting = queue.filter((e) => queueKey(e) === key);
+    const mode = key;
     const oldest = waiting[0]?.joinedAt ?? Date.now();
     const count = playersIn(waiting);
     for (const entry of waiting) {
@@ -77,6 +138,7 @@ function queueStatus() {
           mode,
           waiting: count,
           party: entry.members.length,
+          ranked: !!entry.ranked,
           fillInMs: Math.max(0, oldest + FILL_WAIT_MS - Date.now()),
           full: rooms.size >= MAX_ROOMS,
         });
@@ -131,7 +193,7 @@ const randomMap = () => MAP_IDS[Math.floor(Math.random() * MAP_IDS.length)];
 
 function openRoom({ humans, spectators = [], mode, mapId = randomMap(), onEnd, ...options }) {
   const withSockets = (list) => list.map((h) => ({ ...h, ...profileBits(h.userId), socket: sockets.get(h.userId) ?? null }));
-  const room = new Room({ mapId, humans: withSockets(humans), spectators: withSockets(spectators), heroPick: true, mode, economy: mode === "bomb", onEnd, ...options });
+  const room = new Room({ mapId, humans: withSockets(humans), spectators: withSockets(spectators), heroPick: true, mode, economy: mode !== "tdm", onEnd, ...options });
   rooms.set(room.id, room);
   for (const h of [...humans, ...spectators]) {
     roomOfUser.set(h.userId, room.id);
@@ -146,18 +208,30 @@ function profileBits(userId) {
   return { name: p?.name ?? "Player", skin: p?.skin ?? "classic" };
 }
 
-function startMatch(teams, mode) {
-  const humans = [...teams.red.map((m) => ({ userId: m.userId, team: "red" })), ...teams.blue.map((m) => ({ userId: m.userId, team: "blue" }))];
+function startMatch(teams, mode, ranked = false) {
+  const crowned = ranked ? emperors() : null;
+  const tagged = (m, team) => ({ userId: m.userId, team, ...(ranked ? { rank: badge(rankOf(RankedStat.find(m.userId).points, { emperor: crowned.has(m.userId) })) } : {}) });
+  const humans = [...teams.red.map((m) => tagged(m, "red")), ...teams.blue.map((m) => tagged(m, "blue"))];
+  // Ranked bots play at the level of the humans in the match.
+  const level = ranked ? humans.reduce((s, h) => s + h.rank.index, 0) / humans.length / (TIERS.length - 1) : null;
   openRoom({
     humans,
     mode,
+    ranked,
+    botLevel: level,
     onEnd: (r, result) => {
       const rewards = rewardsFor(r, result);
+      if (ranked) {
+        const rp = rankedResults(r, result);
+        for (const [id, change] of Object.entries(rp)) rewards[id] = { ...(rewards[id] ?? {}), ranked: change };
+      }
       setTimeout(() => closeRoom(r), 1000).unref?.();
       return rewards;
     },
   });
 }
+
+const badge = (rank) => ({ id: rank.id, index: rank.index, icon: rank.icon, label: rank.label, color: rank.color });
 
 // Custom lobby: the host's teams and rules; no rewards (it isn't matchmaking), then back to the lobby.
 function startCustom(userId) {
@@ -184,16 +258,18 @@ function startCustom(userId) {
 }
 
 function matchmake() {
-  for (const mode of MODES) {
+  for (const key of QUEUE_KEYS) {
     if (rooms.size >= MAX_ROOMS) break;
-    const waiting = queue.filter((e) => e.mode === mode);
-    if (!waiting.length) continue;
+    const all = queue.filter((e) => queueKey(e) === key);
+    if (!all.length) continue;
+    const ranked = key === "ranked";
+    const waiting = ranked ? rankedPick(all) : all;
     const waitedLongEnough = Date.now() - waiting[0].joinedAt >= FILL_WAIT_MS;
     if (playersIn(waiting) < MATCH_SIZE && !waitedLongEnough) continue;
     const { teams, used } = packTeams(waiting);
     if (!used.length) continue;
     for (const e of used) queue.splice(queue.indexOf(e), 1);
-    startMatch(teams, mode);
+    startMatch(teams, ranked ? RANKED_MODES[Math.floor(Math.random() * RANKED_MODES.length)] : key, ranked);
   }
   queueStatus();
 }
@@ -218,18 +294,25 @@ function leaveQueue(userId, reason = null) {
   for (const m of entry.members) if (m.userId !== userId) sendUser(m.userId, { t: "cancelled", reason });
 }
 
-function joinQueue(user, ws, requested) {
+function joinQueue(user, ws, requested, ranked = false) {
   const party = social.partyFor(user.id);
   if (social.lobbyFor(user.id)) return send(ws, { t: "notice", text: "Leave the custom lobby to queue", tone: "error" });
   if (party && party.leader !== user.id) return send(ws, { t: "notice", text: "The party leader starts the queue", tone: "error" });
   const ids = party ? party.members : [user.id];
   const missing = ids.find((id) => !sockets.has(id) || roomOfUser.has(id));
   if (missing) return send(ws, { t: "notice", text: `${profileBits(missing).name} isn't ready`, tone: "error" });
-  const mode = MODES.includes(requested) ? requested : party?.mode ?? "bomb";
-  if (party && party.mode !== mode) social.partyAction(user.id, { action: "mode", mode });
+  const mode = ranked ? "bomb" : MODES.includes(requested) ? requested : party?.mode ?? "bomb";
+  if (ranked) {
+    if (ids.length > PARTY_MAX_RANKED) return send(ws, { t: "notice", text: `Ranked parties are up to ${PARTY_MAX_RANKED} players`, tone: "error" });
+    const banned = ids.find((id) => (rankedBans.get(id) ?? 0) > Date.now());
+    if (banned) return send(ws, { t: "notice", text: `${profileBits(banned).name} left a ranked match: ranked opens again in ${Math.ceil((rankedBans.get(banned) - Date.now()) / 60_000)} min`, tone: "error" });
+  }
+  if (party && (party.mode !== mode || !!party.ranked !== ranked)) social.partyAction(user.id, { action: "mode", mode, ranked });
   // Switching modes while queued moves you to the other queue.
   for (const id of ids) leaveQueue(id);
-  queue.push({ members: ids.map((id) => ({ userId: id, ...profileBits(id) })), party: party?.id ?? null, mode, joinedAt: Date.now() });
+  // A group is matched by its best player's tier.
+  const tier = ranked ? Math.max(...ids.map((id) => rankOf(RankedStat.find(id).points).index)) : 0;
+  queue.push({ members: ids.map((id) => ({ userId: id, ...profileBits(id) })), party: party?.id ?? null, mode, ranked, tier, joinedAt: Date.now() });
   matchmake();
 }
 
@@ -261,7 +344,7 @@ function socialMessage(user, ws, msg) {
       if (typeof msg.id === "string") social.decline(user.id, msg.id);
       return true;
     case "party":
-      if (["leave", "kick", "promote", "mode"].includes(msg.action)) report(social.partyAction(user.id, { action: msg.action, target: asUserId(msg.target), mode: msg.mode }));
+      if (["leave", "kick", "promote", "mode"].includes(msg.action)) report(social.partyAction(user.id, { action: msg.action, target: asUserId(msg.target), mode: msg.mode, ranked: msg.ranked === true }));
       return true;
     case "lobby_create":
       leaveQueue(user.id);
@@ -306,7 +389,7 @@ export function connect(ws, user) {
   // Coming back to a running match.
   const existing = roomFor(user.id);
   if (existing) send(ws, existing.welcome(existing.attach(user.id, ws)));
-  else send(ws, { t: "hello", maps: MAP_IDS, ...social.stateFor(user.id) });
+  else send(ws, { t: "hello", maps: MAP_IDS, ...social.stateFor(user.id), ranked: rankedProfile(user.id) });
   social.connected(user.id);
 
   ws.on("message", (raw) => {
@@ -323,7 +406,7 @@ export function connect(ws, user) {
     switch (msg.t) {
       case "queue":
         if (room) return send(ws, room.welcome(room.attach(user.id, ws)));
-        return joinQueue(user, ws, msg.mode);
+        return joinQueue(user, ws, msg.mode, msg.ranked === true);
       case "cancel":
         leaveQueue(user.id, "Matchmaking was cancelled");
         return send(ws, { t: "cancelled" });
@@ -334,9 +417,13 @@ export function connect(ws, user) {
           // A custom match everyone has walked out of ends, freeing the lobby.
           if (room.custom && ![...room.players.values()].some((p) => p.userId && roomOfUser.get(p.userId) === room.id)) room.finish(null);
         }
-        return send(ws, { t: "left", ...social.stateFor(user.id) });
+        return send(ws, { t: "left", ...social.stateFor(user.id), ranked: rankedProfile(user.id) });
       case "ping":
         return send(ws, { t: "pong", c: msg.c, tm: Date.now() });
+      case "ladder":
+        return send(ws, { t: "ladder", top: ladder(), me: rankedProfile(user.id) });
+      case "profile":
+        return send(ws, { t: "profile", ranked: rankedProfile(user.id) });
     }
     if (!room && socialMessage(user, ws, msg)) return;
     const spectator = room?.spectators.get(user.id);
@@ -350,6 +437,7 @@ export function connect(ws, user) {
     else if (msg.t === "drop") room.dropWeapon(player);
     else if (msg.t === "chat") room.chat(player, msg);
     else if (msg.t === "hero") room.heroAction(player, msg);
+    else if (msg.t === "hero_swap" && typeof msg.id === "string") room.swapHero(player, msg.id);
     else if (msg.t === "ability") room.useAbility(player, msg);
     else if (msg.t === "buy" && typeof msg.item === "string") room.buy(player, msg.item);
     else if (msg.t === "sell" && typeof msg.item === "string") room.sell(player, msg.item);

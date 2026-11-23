@@ -50,7 +50,8 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
     <div class="fps-econ"><span data-credits></span><span data-armor></span></div>
     <button type="button" class="fps-buyhint" data-buyhint></button>
     <div class="fps-scope"></div>
-    <div class="fps-respawn" data-respawn><strong data-respawn-time></strong><button type="button" data-respawn-shop>🎒 Change loadout</button></div>
+    <div class="fps-respawn" data-respawn><strong data-respawn-time></strong><button type="button" data-respawn-shop>🎒 Change loadout</button><button type="button" data-respawn-hero>🦸 Change hero</button></div>
+    <button type="button" class="fps-herobtn" data-herobtn aria-label="Change hero" title="Change hero">🦸</button>
     <div class="fps-dead" data-dead>
       <strong data-dead-title>You were eliminated</strong>
       <span class="fps-spec-name" data-spectate></span>
@@ -67,7 +68,7 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
         </div>
         <div data-pause-confirm hidden>
           <strong>Leave the match?</strong>
-          <p>A bot takes over your Jokoman. You can come back while the match is still running.</p>
+          <p data-leave-text>A bot takes over your Jokoman. You can come back while the match is still running.</p>
           <button type="button" class="fps-cta fps-cta--danger" data-leave-yes>Leave</button>
           <button type="button" class="fps-back" data-leave-no>Stay</button>
         </div>
@@ -232,6 +233,19 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
       const el = $("buyhint");
       el.classList.toggle("is-on", !!text);
       if (text) el.textContent = text;
+    },
+    leaveWarning(text) {
+      $("leave-text").textContent = text;
+    },
+    // Team Deathmatch hero change: the touch button, and the one under the respawn timer.
+    heroButton(on, touch) {
+      $("herobtn").classList.toggle("is-on", on && touch);
+      $("respawn-hero").hidden = !on;
+      $("respawn-hero").textContent = touch ? "🦸 Change hero" : "🦸 Change hero (H)";
+    },
+    onHeroSwap(fn) {
+      $("herobtn").addEventListener("click", fn);
+      $("respawn-hero").addEventListener("click", fn);
     },
     onShop(fn) {
       $("buyhint").addEventListener("click", fn);
@@ -489,7 +503,7 @@ export function createHud(root, { touch, ctrlCrouch = false }) {
           .map((p) => {
             const tr = document.createElement("tr");
             tr.className = `is-${p.team}${p.id === meId ? " is-me" : ""}`;
-            for (const value of [`${p.name}${p.bot ? " 🤖" : ""}`, p.kills, p.deaths, p.assists ?? 0]) {
+            for (const value of [`${p.rank ? `${p.rank.icon} ` : ""}${p.name}${p.bot ? " 🤖" : ""}`, p.kills, p.deaths, p.assists ?? 0]) {
               const td = document.createElement("td");
               td.textContent = value;
               tr.appendChild(td);

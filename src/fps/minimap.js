@@ -74,7 +74,7 @@ export class Minimap {
   }
 
   // me: {x, z, yaw}; mates/enemies: [{id, x, z, yaw}]; seen: Set of enemy ids; bomb: {x, z, planted} | null
-  draw(now, { me, mates, enemies, seen, bomb, smokes = [] }) {
+  draw(now, { me, mates, enemies, seen, bomb, smokes = [], hostages = [] }) {
     if (now - this.lastDraw < DRAW_MS) return;
     this.lastDraw = now;
     const ctx = this.ctx;
@@ -106,6 +106,16 @@ export class Minimap {
       const pulse = bomb.planted ? 0.6 + 0.4 * Math.sin(now / 120) : 1;
       ctx.fillStyle = `rgba(239,68,68,${pulse})`;
       ctx.fillRect(px - this.scale * 0.45, pz - this.scale * 0.45, this.scale * 0.9, this.scale * 0.9);
+    }
+    for (const h of hostages) {
+      if (h[4] >= 2) continue;
+      const [px, pz] = this.toPx(h[1], h[2]);
+      ctx.fillStyle = h[4] === 1 ? `rgba(255,169,77,${0.6 + 0.4 * Math.sin(now / 150)})` : "rgba(255,169,77,1)";
+      ctx.beginPath();
+      ctx.arc(px, pz, this.scale * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      ctx.stroke();
     }
     for (const m of mates) this.dot(m.x, m.z, "rgba(96,165,250,1)", this.scale * 0.5, m.yaw);
     if (me) this.dot(me.x, me.z, "rgba(253,224,71,1)", this.scale * 0.6, me.yaw);

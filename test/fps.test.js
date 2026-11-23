@@ -5,16 +5,16 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
-import { CELL, KEY, createBody, step, hitboxes, rayBox, rayWorld, aimDirection, collides, traceShot, smokeBlocks } from "../src/fps/shared/physics.js";
+import { CELL, KEY, createBody, step, hitboxes, rayBox, rayWorld, aimDirection, collides, toCell, lineOfSight, traceShot, smokeBlocks } from "../src/fps/shared/physics.js";
 import { WEAPONS } from "../src/fps/shared/weapons.js";
 import { HEROES as heroList } from "../src/fps/shared/heroes.js";
 import { RULES } from "../src/fps/shared/rules.js";
 import { MAPS, MAP_IDS, isWalkable } from "../src/fps/shared/maps.js";
 import { Room } from "../server/fps/room.js";
-import { createBrain, think } from "../server/fps/bot.js";
+import { createBrain, think, planPath, wallAhead } from "../server/fps/bot.js";
 
-test("all five maps connect spawns and both bomb sites", () => {
-  assert.equal(MAP_IDS.length, 5);
+test("all nine maps connect spawns and both bomb sites", () => {
+  assert.equal(MAP_IDS.length, 9);
   for (const map of Object.values(MAPS)) {
     const start = map.grid.flatMap((r, z) => [...r].flatMap((c, x) => (c === "T" ? [[x, z]] : [])))[0];
     const seen = new Set([start.join()]);
@@ -941,4 +941,88 @@ test("solo queue fills with bots and the match streams snapshots", async () => {
   ws.send(JSON.stringify({ t: "leave" }));
   await ws.next("left");
   ws.close();
+});
+
+test("bots go around ability walls, and shoot down an enemy wall that seals the way", () => {
+  // A small room with a pillar: a wall in the lower lane leaves the upper lane open.
+  const open = { width: 7, height: 5, grid: ["#######", "#.....#", "#.#.#.#", "#.....#", "#######"].map((r) => r.split("")) };
+  const wallIn = (map, cx, cz, team, pass = null) => ({ block: { x0: cx * CELL, x1: (cx + 1) * CELL, z0: cz * CELL + 1.3, z1: cz * CELL + 1.7, h: 3, pass }, team });
+  const bot = { team: "red", body: createBody(1.5 * CELL, 3.5 * CELL, 0) };
+  let room = { map: open, abilities: { effects: [wallIn(open, 3, 3, "blue")] } };
+  let plan = planPath(room, bot, { x: 1, z: 3 }, { x: 5, z: 3 });
+  assert.equal(plan.breach, false);
+  assert.ok(!plan.path.some((c) => toCell(c.x) === 3 && toCell(c.z) === 3), "detours through the other lane");
+  // A team's own fence doesn't count as a wall for it.
+  room = { map: open, abilities: { effects: [wallIn(open, 3, 3, "red", "red")] } };
+  assert.ok(planPath(room, bot, { x: 1, z: 3 }, { x: 5, z: 3 }).path.some((c) => toCell(c.x) === 3 && toCell(c.z) === 3));
+
+  // A single corridor sealed by an enemy wall: break it.
+  const corridor = { width: 7, height: 3, grid: ["#######", "#.....#", "#######"].map((r) => r.split("")) };
+  const seal = { block: { x0: 3 * CELL + 1.3, x1: 3 * CELL + 1.7, z0: CELL, z1: 2 * CELL, h: 3 }, team: "blue" };
+  room = { map: corridor, abilities: { effects: [seal] } };
+  const runner = { team: "red", body: createBody(2.5 * CELL, 1.5 * CELL, 0) };
+  plan = planPath(room, runner, { x: 1, z: 1 }, { x: 5, z: 1 });
+  assert.equal(plan.breach, true);
+  assert.ok(plan.path.length > 0);
+  const ahead = wallAhead(room, runner, { x: 4.5 * CELL, z: 1.5 * CELL });
+  assert.equal(ahead?.effect, seal, "sees the wall on the way");
+  assert.equal(ahead.enemy, true);
+  assert.equal(wallAhead(room, runner, { x: 1.5 * CELL, z: 1.5 * CELL }), null, "not when walking away from it");
+  assert.equal(wallAhead({ map: corridor, abilities: { effects: [{ ...seal, team: "red" }] } }, runner, { x: 4.5 * CELL, z: 1.5 * CELL }).enemy, false, "our own wall is never a target");
+});
+
+test("Team Deathmatch: change hero (instant when dead or just spawned, otherwise next spawn)", () => {
+  let t = 1_000_000;
+  const sent = [];
+  const socket = { readyState: 1, send: (d) => sent.push(JSON.parse(d)) };
+  const room = new Room({ mapId: "pantai", mode: "tdm", clock: () => t, autoTick: false, humans: [{ userId: 1, name: "Me", skin: "classic", socket, team: "red" }, { userId: 2, name: "Mate", skin: "classic", socket: null, team: "red" }] });
+  const me = room.playerOf(1);
+  const mate = room.playerOf(2);
+  mate.bot = false;
+  room.round.phase = "live";
+  mate.hero = "jamu";
+  me.hero = "kabut";
+  me.abil.ult = 80;
+  // Taken by a human teammate.
+  room.swapHero(me, "jamu");
+  assert.equal(sent.at(-1).error, "A teammate is playing that hero");
+  // A bot teammate gives the hero up.
+  const bot = [...room.players.values()].find((p) => p.bot && p.team === "red");
+  bot.hero = "petasan";
+  // Alive, out of spawn protection: queued for the next spawn.
+  me.protectUntil = 0;
+  room.swapHero(me, "petasan");
+  assert.equal(me.hero, "kabut");
+  assert.equal(me.nextHero, "petasan");
+  assert.notEqual(bot.hero, "petasan", "the bot moved off it");
+  assert.deepEqual(sent.at(-1), { t: "hero_swap", hero: "petasan", now: false });
+  room.damage(room.playerOf(1) === me ? [...room.players.values()].find((p) => p.team === "blue") : me, me, 200, "body");
+  assert.equal(me.alive, false);
+  t = me.respawnAt;
+  room.respawnDue(t);
+  assert.equal(me.hero, "petasan", "swapped on respawn");
+  assert.equal(me.abil.ult, 0, "ultimate starts over");
+  // Within spawn protection: instant.
+  room.swapHero(me, "magnet");
+  assert.equal(me.hero, "magnet");
+  assert.ok(sent.some((m) => m.t === "hero" && m.id === me.id && m.hero === "magnet"));
+  // Bomb mode: no swapping.
+  const bombRoom = new Room({ mapId: "pantai", autoTick: false, humans: [{ userId: 1, name: "Me", skin: "classic", socket: null }] });
+  const p = bombRoom.playerOf(1);
+  p.hero = "kabut";
+  bombRoom.swapHero(p, "dash");
+  assert.equal(p.hero, "kabut");
+});
+
+test("spawn spots stay out of the enemy's sight lines", () => {
+  // Sawah and Stasiun have a straight lane between the spawns; no spawn spot looks down it.
+  const eye = (p) => ({ x: p.x, y: 1.6, z: p.z });
+  for (const id of MAP_IDS) {
+    const map = MAPS[id];
+    for (const [side, other] of [["attack", "defend"], ["defend", "attack"]]) {
+      assert.ok(map.spawns[side].length >= 6, `${id} ${side}`);
+      const enemyZone = map.zones[other].map((c) => ({ x: (c.x + 0.5) * CELL, z: (c.z + 0.5) * CELL }));
+      for (const s of map.spawns[side]) assert.ok(!enemyZone.some((e) => lineOfSight(map, eye(s), eye(e))), `${id} ${side} spawn sees the enemy spawn`);
+    }
+  }
 });

@@ -49,6 +49,8 @@ export function createHumanKit(weaponMats) {
     mats: {
       red: mat(TEAM.red, 0.7),
       blue: mat(TEAM.blue, 0.7),
+      // Hostages wear bright orange so nobody mistakes them for a target.
+      hostage: mat(0xe8731c, 0.75),
       cloth: mat(0x4a4d42, 0.95),
       shirt: mat(0x5b5e52, 0.95),
       dark: mat(0x1f2124, 0.8),
@@ -261,7 +263,7 @@ export class Humanoid {
     const defusing = !!(act & 4);
     // Planting shows the bomb in hand; defusing puts the gun away.
     this.setWeapon(planting ? 3 : state.weapon);
-    this.weaponMount.visible = !defusing;
+    this.weaponMount.visible = !defusing && !this.unarmed;
 
     const moved = this.last ? Math.hypot(state.x - this.last.x, state.z - this.last.z) : 0;
     const speed = dt > 0 ? Math.min(8, moved / dt) : 0;
